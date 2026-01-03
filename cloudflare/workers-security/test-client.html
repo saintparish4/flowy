@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cloudflare Workers Security - Test Client</title>
+    <script
+      src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+      async
+      defer
+    ></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+        background: #f5f5f7;
+        min-height: 100vh;
+        padding: 60px 20px;
+        color: #1d1d1f;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .container {
+        max-width: 980px;
+        margin: 0 auto;
+      }
+
+      h1 {
+        color: #1d1d1f;
+        text-align: center;
+        margin-bottom: 12px;
+        font-size: 3rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+
+      .subtitle {
+        text-align: center;
+        color: #86868b;
+        font-size: 1.25rem;
+        font-weight: 400;
+        margin-bottom: 60px;
+        letter-spacing: -0.01em;
+      }
+
+      .card {
+        background: white;
+        border-radius: 18px;
+        padding: 48px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
+        transition: box-shadow 0.3s ease;
+      }
+
+      h2 {
+        color: #1d1d1f;
+        margin-bottom: 36px;
+        font-size: 1.75rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .endpoint {
+        margin-bottom: 48px;
+        padding-bottom: 48px;
+        border-bottom: 1px solid #d2d2d7;
+      }
+
+      .endpoint:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 0;
+      }
+
+      .endpoint h3 {
+        color: #1d1d1f;
+        margin-bottom: 8px;
+        font-family: "SF Mono", "Monaco", "Courier New", monospace;
+        font-size: 1.125rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .endpoint p {
+        color: #6e6e73;
+        margin-bottom: 20px;
+        font-size: 1rem;
+        line-height: 1.6;
+      }
+
+      .endpoint p em {
+        color: #86868b;
+        font-size: 0.9375rem;
+      }
+
+      button {
+        background: #0071e3;
+        color: white;
+        border: none;
+        padding: 12px 22px;
+        border-radius: 980px;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 400;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        margin-right: 12px;
+        margin-bottom: 8px;
+      }
+
+      button:hover {
+        background: #0077ed;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0, 113, 227, 0.25);
+      }
+
+      button:active {
+        transform: translateY(0);
+      }
+
+      button:disabled {
+        background: #d2d2d7;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      .response {
+        margin-top: 24px;
+        padding: 20px;
+        background: #fafafa;
+        border-radius: 12px;
+        font-family: "SF Mono", "Monaco", "Courier New", monospace;
+        font-size: 0.875rem;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid #e5e5e7;
+        line-height: 1.5;
+      }
+
+      .response.success {
+        background: #f0fdf4;
+        border-color: #86efac;
+      }
+
+      .response.error {
+        background: #fef2f2;
+        border-color: #fca5a5;
+      }
+
+      .cf-turnstile {
+        margin: 20px 0;
+      }
+
+      .rate-limit-info {
+        display: inline-block;
+        margin-left: 16px;
+        padding: 6px 12px;
+        background: #f5f5f7;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        color: #6e6e73;
+        font-weight: 400;
+        vertical-align: middle;
+      }
+
+      .config {
+        background: #fbfbfb;
+        padding: 28px;
+        border-radius: 12px;
+        margin-bottom: 40px;
+        border: 1px solid #e5e5e7;
+      }
+
+      .config h3 {
+        margin-bottom: 16px;
+        color: #1d1d1f;
+        font-size: 1.125rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+
+      .config p {
+        margin-bottom: 8px;
+        font-size: 0.9375rem;
+        color: #6e6e73;
+        line-height: 1.6;
+      }
+
+      .config code {
+        background: #f5f5f7;
+        padding: 3px 8px;
+        border-radius: 6px;
+        font-family: "SF Mono", "Monaco", "Courier New", monospace;
+        font-size: 0.875rem;
+        color: #1d1d1f;
+        border: 1px solid #e5e5e7;
+      }
+
+      .config input[type="text"] {
+        width: 100%;
+        padding: 12px 16px;
+        margin-top: 12px;
+        border: 1px solid #d2d2d7;
+        border-radius: 10px;
+        font-size: 1rem;
+        font-family: inherit;
+        transition: all 0.2s ease;
+        background: white;
+      }
+
+      .config input[type="text"]:focus {
+        outline: none;
+        border-color: #0071e3;
+        box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.1);
+      }
+
+      .config input[type="text"]::placeholder {
+        color: #86868b;
+      }
+
+      /* Custom scrollbar for response areas */
+      .response::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      .response::-webkit-scrollbar-track {
+        background: transparent;
+      }
+
+      .response::-webkit-scrollbar-thumb {
+        background: #d2d2d7;
+        border-radius: 4px;
+      }
+
+      .response::-webkit-scrollbar-thumb:hover {
+        background: #a1a1a6;
+      }
+
+      /* Button group for WAF tests */
+      .endpoint button + button {
+        margin-left: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Workers Security</h1>
+      <p class="subtitle">Test Client</p>
+
+      <div class="card">
+        <div class="config">
+          <h3>Configuration</h3>
+          <p>
+            <strong>API Base URL:</strong>
+            <code id="apiUrl">http://localhost:8787</code>
+          </p>
+          <p>
+            <strong>Mode:</strong> <code id="mode">Development (Mock)</code>
+          </p>
+          <p>
+            <em
+              >Update the API URL below if testing against a deployed worker</em
+            >
+          </p>
+          <input
+            type="text"
+            id="apiUrlInput"
+            placeholder="https://your-worker.workers.dev"
+          />
+        </div>
+
+        <h2>API Endpoints</h2>
+
+        <!-- Public Endpoint -->
+        <div class="endpoint">
+          <h3>GET /api/public</h3>
+          <p>
+            Public endpoint with relaxed rate limiting (1000 requests/minute)
+          </p>
+          <button onclick="testPublic()">Test Public Endpoint</button>
+          <span class="rate-limit-info" id="publicRateLimit"></span>
+          <div id="publicResponse"></div>
+        </div>
+
+        <!-- Protected Endpoint -->
+        <div class="endpoint">
+          <h3>GET /api/protected</h3>
+          <p>
+            Protected endpoint requiring Turnstile verification (100
+            requests/minute)
+          </p>
+          <p>
+            <em
+              >In development mode, Turnstile is mocked and always passes. Any
+              token value works.</em
+            >
+          </p>
+          <div
+            class="cf-turnstile"
+            data-sitekey="1x00000000000000000000AA"
+            data-callback="onTurnstileSuccess"
+            data-theme="light"
+          ></div>
+          <button onclick="testProtected()" id="protectedBtn" disabled>
+            Test Protected Endpoint
+          </button>
+          <div id="protectedResponse"></div>
+        </div>
+
+        <!-- Login Endpoint -->
+        <div class="endpoint">
+          <h3>POST /api/login</h3>
+          <p>Login endpoint with strict rate limiting (5 requests/minute)</p>
+          <p><em>Try clicking multiple times to test rate limiting</em></p>
+          <button onclick="testLogin()">Test Login (Strict Rate Limit)</button>
+          <span class="rate-limit-info" id="loginRateLimit"></span>
+          <div id="loginResponse"></div>
+        </div>
+
+        <!-- Status Endpoint -->
+        <div class="endpoint">
+          <h3>GET /api/status</h3>
+          <p>Service status and configuration</p>
+          <button onclick="testStatus()">Get Status</button>
+          <div id="statusResponse"></div>
+        </div>
+
+        <!-- WAF Test -->
+        <div class="endpoint">
+          <h3>WAF Testing</h3>
+          <p>Test Web Application Firewall rules</p>
+          <button onclick="testWAF('sql')">Test SQL Injection Block</button>
+          <button onclick="testWAF('xss')">Test XSS Block</button>
+          <button onclick="testWAF('traversal')">Test Path Traversal</button>
+          <div id="wafResponse"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let turnstileToken = null;
+      let apiBaseUrl = "http://localhost:8787";
+
+      // Update API URL
+      document.getElementById("apiUrlInput").addEventListener("change", (e) => {
+        apiBaseUrl = e.target.value || "http://localhost:8787";
+        document.getElementById("apiUrl").textContent = apiBaseUrl;
+      });
+
+      // Turnstile callback
+      function onTurnstileSuccess(token) {
+        turnstileToken = token;
+        document.getElementById("protectedBtn").disabled = false;
+        console.log(
+          "Turnstile token received:",
+          token.substring(0, 20) + "..."
+        );
+      }
+
+      // Helper to display response
+      function displayResponse(elementId, data, isError = false) {
+        const element = document.getElementById(elementId);
+        element.textContent = JSON.stringify(data, null, 2);
+        element.className = `response ${isError ? "error" : "success"}`;
+        element.style.display = "block";
+      }
+
+      // Helper to update rate limit info
+      function updateRateLimit(elementId, headers) {
+        const element = document.getElementById(elementId);
+        const limit = headers.get("X-RateLimit-Limit");
+        const remaining = headers.get("X-RateLimit-Remaining");
+
+        if (limit && remaining) {
+          element.textContent = `${remaining}/${limit} remaining`;
+          element.style.display = "inline-block";
+        }
+      }
+
+      // Test public endpoint
+      async function testPublic() {
+        try {
+          const response = await fetch(`${apiBaseUrl}/api/public`);
+          const data = await response.json();
+
+          updateRateLimit("publicRateLimit", response.headers);
+          displayResponse("publicResponse", data, !response.ok);
+        } catch (error) {
+          displayResponse("publicResponse", { error: error.message }, true);
+        }
+      }
+
+      // Test protected endpoint
+      async function testProtected() {
+        try {
+          // In dev mode, use a mock token if real token isn't available
+          const token = turnstileToken || "mock-dev-token";
+
+          const response = await fetch(`${apiBaseUrl}/api/protected`, {
+            headers: {
+              "CF-Turnstile-Token": token,
+            },
+          });
+          const data = await response.json();
+
+          displayResponse("protectedResponse", data, !response.ok);
+        } catch (error) {
+          displayResponse("protectedResponse", { error: error.message }, true);
+        }
+      }
+
+      // Test login endpoint
+      async function testLogin() {
+        try {
+          const response = await fetch(`${apiBaseUrl}/api/login`, {
+            method: "POST",
+          });
+          const data = await response.json();
+
+          updateRateLimit("loginRateLimit", response.headers);
+          displayResponse("loginResponse", data, !response.ok);
+        } catch (error) {
+          displayResponse("loginResponse", { error: error.message }, true);
+        }
+      }
+
+      // Test status endpoint
+      async function testStatus() {
+        try {
+          const response = await fetch(`${apiBaseUrl}/api/status`);
+          const data = await response.json();
+
+          displayResponse("statusResponse", data, !response.ok);
+
+          // Update mode display
+          if (data.data?.features?.rateLimit?.backend === "mock") {
+            document.getElementById("mode").textContent = "Development (Mock)";
+          } else {
+            document.getElementById("mode").textContent =
+              "Production (Real Cloudflare)";
+          }
+        } catch (error) {
+          displayResponse("statusResponse", { error: error.message }, true);
+        }
+      }
+
+      // Test WAF rules
+      async function testWAF(type) {
+        try {
+          let url;
+          switch (type) {
+            case "sql":
+              url = `${apiBaseUrl}/api/public?id=1%20union%20select%20*`;
+              break;
+            case "xss":
+              url = `${apiBaseUrl}/api/public?q=%3Cscript%3Ealert(1)%3C/script%3E`;
+              break;
+            case "traversal":
+              url = `${apiBaseUrl}/api/public?file=../../../etc/passwd`;
+              break;
+          }
+
+          const response = await fetch(url);
+          const data = await response.json();
+
+          displayResponse(
+            "wafResponse",
+            {
+              testType: type,
+              blocked: response.status === 403,
+              ...data,
+            },
+            response.status === 403
+          );
+        } catch (error) {
+          displayResponse("wafResponse", { error: error.message }, true);
+        }
+      }
+
+      // Load status on page load
+      window.addEventListener("load", () => {
+        testStatus();
+      });
+    </script>
+  </body>
+</html>
