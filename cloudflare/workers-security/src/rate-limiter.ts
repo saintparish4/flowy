@@ -29,7 +29,7 @@ export class RateLimiter {
 
   async check(config: RateLimitConfig): Promise<RateLimitResult> {
     const now = Math.floor(Date.now() / 1000);
-    const windowStart = now - config.window;
+    const checkStart = performance.now();
 
     if (this.useMock) {
       return this.checkMock(config, now);
@@ -39,6 +39,7 @@ export class RateLimiter {
     const key = `ratelimit:${config.key}`;
 
     try {
+      const storageStart = performance.now();
       // Get current counter
       const data = (await this.kv!.get(key, "json")) as {
         count: number;
@@ -73,6 +74,7 @@ export class RateLimiter {
         JSON.stringify({ count, resetAt }),
         { expirationTtl: config.window + 60 } // Add buffer to TTL
       );
+      const totalStorageDuration = performance.now() - storageStart;
 
       return {
         allowed,
@@ -80,6 +82,10 @@ export class RateLimiter {
         remaining,
         resetAt,
         retryAfter: allowed ? undefined : resetAt - now,
+        timing: {
+          checkDuration: performance.now() - checkStart, 
+          storageDuration: totalStorageDuration, 
+        }, 
       };
     } catch (error) {
       console.error("Rate limiter error:", error);
@@ -89,6 +95,9 @@ export class RateLimiter {
         limit: config.limit,
         remaining: config.limit,
         resetAt: now + config.window,
+        timing: {
+          checkDuration: performance.now() - checkStart,  
+        }, 
       };
     }
   }
@@ -144,7 +153,7 @@ export function createRateLimiter(env: Env): RateLimiter {
 }
 
 // Extract rate limit key from request
-//Uses IP address by default, but can be customized based on auth tokens, API keys, etc.
+// Uses IP address by default, but can be customized based on auth tokens, API keys, etc.
 
 export function getRateLimitKey(
   request: Request,

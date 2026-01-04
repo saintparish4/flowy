@@ -99,7 +99,7 @@ export class TurnstileVerifier {
 
       if (contentType.includes("application/json")) {
         try {
-          const body = await request.clone().json();
+          const body = (await request.clone().json()) as Record<string, any>;
           return body["cf-turnstile-response"] || body.turnstileToken || null;
         } catch {
           return null;

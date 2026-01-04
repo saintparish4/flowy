@@ -182,9 +182,12 @@ function evaluateCondition(
  * Check if request matches any WAF rules
  */
 export function checkWAF(request: Request): WAFResult {
+  const startTime = performance.now();
   const url = new URL(request.url);
+  let rulesEvaluated = 0;
 
   for (const rule of WAF_RULES) {
+    rulesEvaluated++;
     // Check if any condition matches (OR logic)
     const matched = rule.conditions.some((condition) =>
       evaluateCondition(condition, request, url)
@@ -197,6 +200,10 @@ export function checkWAF(request: Request): WAFResult {
           blocked: true,
           rule,
           reason: rule.description,
+          timing: {
+            checkDuration: performance.now() - startTime,
+            rulesEvaluated,
+          },
         };
       }
 
@@ -211,6 +218,10 @@ export function checkWAF(request: Request): WAFResult {
   // No rules matched, allow request
   return {
     blocked: false,
+    timing: {
+      checkDuration: performance.now() - startTime,
+      rulesEvaluated,
+    },
   };
 }
 

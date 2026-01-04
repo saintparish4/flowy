@@ -1,3 +1,5 @@
+/// <reference types="@cloudflare/workers-types" />
+
 // Environment variables
 export interface Env {
   RATE_LIMIT_KV: KVNamespace;
@@ -18,6 +20,34 @@ export interface TraceInfo {
   rayId?: string;
 }
 
+// Performance metrics
+export interface PerformanceMetrics {
+  startTime: number;
+  endTime?: number;
+  duration?: number;
+  rateLimitCheckTime?: number;
+  turnstileCheckTime?: number;
+  wafCheckTime?: number;
+  handlerTime?: number;
+  timings: {
+    [key: string]: number;
+  };
+}
+
+// Experiment context
+export interface ExperimentContext {
+  experimentId?: string;
+  profileName?: string;
+  attackType?: string;
+  isTestTraffic?: boolean;
+}
+
+// Enhanced trace info
+export interface EnhancedTraceInfo extends TraceInfo {
+  performance: PerformanceMetrics;
+  experiment?: ExperimentContext;
+}
+
 // Rate Limiting
 export interface RateLimitConfig {
   key: string;
@@ -31,6 +61,10 @@ export interface RateLimitResult {
   remaining: number;
   resetAt: number;
   retryAfter?: number;
+  timing?: {
+    checkDuration: number; // Time spent checking rate limit
+    storageDuration?: number; // Time spent on KV operations  
+  }
 }
 
 // Turnstile
@@ -59,6 +93,10 @@ export interface WAFResult {
   blocked: boolean;
   rule?: WAFRule;
   reason?: string;
+  timing?: {
+    checkDuration: number; // Time spent evaluating WAF rules
+    rulesEvaluated: number; // Number of rules evaluated
+  };
 }
 
 // API Response types

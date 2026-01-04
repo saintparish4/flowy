@@ -33,6 +33,8 @@
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20260103.0",
-    "@types/node": "^25.0.3"
+    "@types/node": "^25.0.3",
+    "fs": "^0.0.2",
+    "path": "^0.12.7"
   }
 }

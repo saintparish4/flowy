@@ -1,5 +1,33 @@
 import { TraceInfo } from "./types";
 
+// Performance timing data for a request
+export interface PerformanceMetrics {
+  startTime: number;
+  endTime?: number;
+  duration?: number;
+  rateLimitCheckTime?: number;
+  turnstileCheckTime?: number;
+  wafCheckTime?: number;
+  handlerTime?: number;
+  timings: {
+    [key: string]: number;
+  };
+}
+
+// Experiment correlation data
+export interface ExperimentContext {
+  experimentId?: string;
+  profileName?: string;
+  attackType?: string;
+  isTestTraffic?: boolean;
+}
+
+// Enhanced trace info with performance and experiment data
+export interface EnhancedTraceInfo extends TraceInfo {
+  performance: PerformanceMetrics;
+  experiment?: ExperimentContext;
+}
+
 // Generate a unique trace ID for the request
 // Uses crypto.randomUUID() if available, falls back to timestamp-based ID
 
@@ -15,10 +43,16 @@ export function generateTraceId(): string {
 // Extract trace information from the request
 // Includes Cloudflare-specific headers like CF-Ray
 
-export function createTraceInfo(request: Request): TraceInfo {
+export function createTraceInfo(request: Request): EnhancedTraceInfo {
   const url = new URL(request.url);
 
-  return {
+  // Extract experiment context if present
+  const experimentId = request.headers.get("X-Experiment-ID");
+  const profileName = request.headers.get("X-Profile-Name");
+  const attackType = request.headers.get("X-Attack-Type");
+  const isTestTraffic = request.headers.get("X-Test-Traffic") === "true";
+
+  const trace: EnhancedTraceInfo = {
     traceId: generateTraceId(),
     timestamp: Date.now(),
     method: request.method,
@@ -29,7 +63,83 @@ export function createTraceInfo(request: Request): TraceInfo {
       "unknown",
     country: request.headers.get("CF-IPCountry") || undefined,
     rayId: request.headers.get("CF-Ray") || undefined,
+    performance: {
+      startTime: performance.now(),
+      timings: {},
+    },
   };
+
+  if (experimentId || profileName || attackType || isTestTraffic) {
+    trace.experiment = {
+      experimentId: experimentId || undefined,
+      profileName: profileName || undefined,
+      attackType: attackType || undefined,
+      isTestTraffic,
+    };
+  }
+
+  return trace;
+}
+
+// Record a timing measurement for a specific operation
+export function recordTiming(
+  trace: EnhancedTraceInfo,
+  name: string,
+  startTime: number
+): void {
+  const duration = performance.now() - startTime;
+  trace.performance.timings[name] = duration;
+
+  // Also set specific fields for common operations
+  switch (name) {
+    case "rateLimit":
+      trace.performance.rateLimitCheckTime = duration;
+      break;
+    case "turnstile":
+      trace.performance.turnstileCheckTime = duration;
+      break;
+    case "waf":
+      trace.performance.wafCheckTime = duration;
+      break;
+    case "handler":
+      trace.performance.handlerTime = duration;
+      break;
+  }
+}
+
+// Finalize performance metrics
+export function finalizePerformance(trace: EnhancedTraceInfo): void {
+  trace.performance.endTime = performance.now();
+  trace.performance.duration =
+    trace.performance.endTime - trace.performance.startTime;
+}
+
+// Export metrics in structured format for analysis
+export function exportMetrics(
+  trace: EnhancedTraceInfo,
+  additionalData?: Record<string, any>
+): string {
+  const metrics = {
+    timestamp: trace.timestamp,
+    traceId: trace.traceId,
+    method: trace.method,
+    url: trace.url,
+    ip: trace.ip,
+    country: trace.country,
+    rayId: trace.rayId,
+    performance: {
+      total: trace.performance.duration,
+      rateLimit: trace.performance.rateLimitCheckTime,
+      turnstile: trace.performance.turnstileCheckTime,
+      waf: trace.performance.wafCheckTime,
+      handler: trace.performance.handlerTime,
+      ...trace.performance.timings,
+    },
+    experiment: trace.experiment,
+    ...additionalData,
+  };
+
+  return JSON.stringify(metrics);
 }
 
 // Add trace headers to the response
