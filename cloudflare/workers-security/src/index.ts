@@ -9,8 +9,14 @@ import {
 import {
   createRateLimiter,
   getRateLimitKey,
+  getRateLimitProfile,
   RATE_LIMIT_PROFILES,
 } from "./rate-limiter";
+import {
+  createBurstDetector,
+  BURST_PROFILES,
+  type BurstConfig,
+} from "./burst-detector";
 import {
   createTurnstileVerifier,
   TurnstileVerifier,
@@ -136,6 +142,7 @@ async function handleRoot(
     features: [
       "Request tracing with unique trace IDs",
       "Rate limiting using Cloudflare KV",
+      "Burst detection with queuing and throttling",
       "Turnstile bot protection",
       "WAF rule simulation",
       "Mock implementations for local development",
@@ -159,11 +166,51 @@ async function handlePublicAPI(
   trace: any
 ): Promise<Response> {
   const rateLimiter = createRateLimiter(env);
+  const burstDetector = createBurstDetector(env);
   const key = getRateLimitKey(request, "public");
+  const url = new URL(request.url);
+  
+  // Get rate limit profile and burst detection for this endpoint
+  const rateLimitProfile = getRateLimitProfile(url.pathname);
+  const burstConfig: BurstConfig = BURST_PROFILES.RELAXED;
+
+  // Check burst detection first (more aggressive)
+  const burstResult = await burstDetector.check(key, burstConfig);
+  
+  if (burstResult.isBurst) {
+    // Handle burst based on severity
+    if (burstResult.recommendation === 'block' || burstResult.severity === 'critical') {
+      logTrace(trace, { 
+        burst: "blocked", 
+        severity: burstResult.severity,
+        shortWindowCount: burstResult.shortWindowCount,
+        shortWindowLimit: burstResult.shortWindowLimit,
+      });
+      return createErrorResponse("Rate limit exceeded (burst detected)", 429, trace, {
+        burst: {
+          severity: burstResult.severity,
+          shortWindowCount: burstResult.shortWindowCount,
+          shortWindowLimit: burstResult.shortWindowLimit,
+          recommendation: burstResult.recommendation,
+        },
+      });
+    } else if (burstResult.recommendation === 'queue') {
+      // Queue the request to throttle it
+      try {
+        await burstDetector.queue(key, 5000);
+      } catch (error: any) {
+        if (error.message === 'Request queue timeout') {
+          logTrace(trace, { burst: "queued_timeout" });
+          return createErrorResponse("Request queued timeout", 429, trace);
+        }
+      }
+    }
+    // For 'throttle' or 'allow', continue to rate limit check
+  }
 
   const rateLimit = await rateLimiter.check({
     key,
-    ...RATE_LIMIT_PROFILES.RELAXED,
+    ...rateLimitProfile,
   });
 
   if (!rateLimit.allowed) {
@@ -221,11 +268,43 @@ async function handleProtectedAPI(
 
   // Apply rate limiting
   const rateLimiter = createRateLimiter(env);
+  const burstDetector = createBurstDetector(env);
   const key = getRateLimitKey(request, "protected");
+  const url = new URL(request.url);
+  
+  // Get rate limit profile and burst detection for this endpoint
+  const rateLimitProfile = getRateLimitProfile(url.pathname);
+  const burstConfig: BurstConfig = BURST_PROFILES.NORMAL;
+
+  // Check burst detection first
+  const burstResult = await burstDetector.check(key, burstConfig);
+  
+  if (burstResult.isBurst) {
+    if (burstResult.recommendation === 'block' || burstResult.severity === 'critical') {
+      logTrace(trace, { 
+        burst: "blocked", 
+        severity: burstResult.severity,
+      });
+      return createErrorResponse("Rate limit exceeded (burst detected)", 429, trace, {
+        burst: {
+          severity: burstResult.severity,
+          recommendation: burstResult.recommendation,
+        },
+      });
+    } else if (burstResult.recommendation === 'queue') {
+      try {
+        await burstDetector.queue(key, 5000);
+      } catch (error: any) {
+        if (error.message === 'Request queue timeout') {
+          return createErrorResponse("Request queued timeout", 429, trace);
+        }
+      }
+    }
+  }
 
   const rateLimit = await rateLimiter.check({
     key,
-    ...RATE_LIMIT_PROFILES.NORMAL,
+    ...rateLimitProfile,
   });
 
   if (!rateLimit.allowed) {
@@ -258,11 +337,57 @@ async function handleLogin(
 
   // Strict rate limiting for login attempts
   const rateLimiter = createRateLimiter(env);
+  const burstDetector = createBurstDetector(env);
   const key = getRateLimitKey(request, "login");
+  const url = new URL(request.url);
+  
+  // Get rate limit profile and burst detection for this endpoint
+  const rateLimitProfile = getRateLimitProfile(url.pathname);
+  const burstConfig: BurstConfig = BURST_PROFILES.STRICT;
+
+  // Check burst detection first (very strict for login)
+  const burstResult = await burstDetector.check(key, burstConfig);
+  
+  if (burstResult.isBurst) {
+    // For login, be very aggressive - block or throttle most bursts
+    if (burstResult.recommendation === 'block' || 
+        burstResult.severity === 'critical' || 
+        burstResult.severity === 'high') {
+      logTrace(trace, {
+        burst: "blocked",
+        severity: burstResult.severity,
+        endpoint: "login",
+      });
+      return createErrorResponse(
+        "Too many login attempts. Please try again later.",
+        429,
+        trace,
+        {
+          burst: {
+            severity: burstResult.severity,
+            shortWindowCount: burstResult.shortWindowCount,
+            shortWindowLimit: burstResult.shortWindowLimit,
+          },
+        }
+      );
+    } else if (burstResult.recommendation === 'queue' || burstResult.recommendation === 'throttle') {
+      try {
+        await burstDetector.queue(key, 3000); // Shorter timeout for login
+      } catch (error: any) {
+        if (error.message === 'Request queue timeout') {
+          return createErrorResponse(
+            "Too many login attempts. Please try again later.",
+            429,
+            trace
+          );
+        }
+      }
+    }
+  }
 
   const rateLimit = await rateLimiter.check({
     key,
-    ...RATE_LIMIT_PROFILES.STRICT,
+    ...rateLimitProfile,
   });
 
   if (!rateLimit.allowed) {
@@ -307,6 +432,10 @@ async function handleStatus(
         configured: !!env.TURNSTILE_SECRET_KEY,
       },
       rateLimit: {
+        enabled: true,
+        backend: env.RATE_LIMIT_KV ? "kv" : "mock",
+      },
+      burstDetection: {
         enabled: true,
         backend: env.RATE_LIMIT_KV ? "kv" : "mock",
       },

@@ -265,6 +265,51 @@ export const SQL_INJECTION_ATTACK: AttackProfile = {
   },
 };
 
+// WAF SQL Injection test profile
+export const WAF_SQL_INJECTION_TEST: AttackProfile = {
+  name: "WAF SQL Injection Test",
+  description: "Comprehensive SQL injection test patterns for WAF validation",
+  type: "sustained",
+  requestsPerSecond: 100,
+  duration: 30,
+  concurrency: 20,
+  pattern: {
+    distribution: "constant",
+    variance: 0.1,
+  },
+  requests: [
+    {
+      method: "GET",
+      path: "/api/public?id=1' OR '1'='1",
+    },
+    {
+      method: "GET",
+      path: "/api/public?id=1 UNION SELECT * FROM users",
+    },
+    {
+      method: "GET",
+      path: "/api/public?id=1; DROP TABLE users--",
+    },
+    {
+      method: "POST",
+      path: "/api/login",
+      body: { username: "admin'--", password: "password" },
+    },
+    {
+      method: "GET",
+      path: "/api/public?id=1' OR 1=1--",
+    },
+    {
+      method: "GET",
+      path: "/api/public?id=1' OR '1'='1' OR '1'='1",
+    },
+  ],
+  expected: {
+    blockRate: 1.0, // WAF should block all
+    avgLatency: 10,
+  },
+};
+
 // XSS attack pattern
 export const XSS_ATTACK: AttackProfile = {
   name: "XSS Attack",
@@ -308,6 +353,7 @@ export const ALL_PROFILES: Record<string, AttackProfile> = {
   LEGITIMATE_TRAFFIC,
   MIXED_TRAFFIC,
   SQL_INJECTION_ATTACK,
+  WAF_SQL_INJECTION_TEST,
   XSS_ATTACK,
 };
 
