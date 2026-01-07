@@ -452,7 +452,7 @@ function generateDetailedAnalysis(profileName: string): string {
  */
 async function loadWAFRules(): Promise<void> {
   try {
-    const module = await import('../src/waf-config.js');
+    const module = await import('../src/rules/waf-config.js');
     WAF_RULES = module.WAF_RULES || [];
   } catch (error) {
     console.error('Warning: Could not load WAF rules from src/waf-config.js');

@@ -1,0 +1,194 @@
+================================================================================
+EXPERIMENT REPORT
+================================================================================
+
+Experiment Information
+--------------------------------------------------------------------------------
+Experiment ID:    exp-1767795477902-tkxauu1
+Profile:          Core Legitimate Traffic
+Start Time:       2026-01-07T14:17:57.902Z
+End Time:         2026-01-07T14:18:27.958Z
+Duration:         30.06s
+
+Summary Statistics
+--------------------------------------------------------------------------------
+Total Requests:        2,356
+Successful:            2,356
+Failed:                0
+Blocked:               0
+Rate Limited:          0
+WAF Blocked:           0
+
+Request Rate:          78.39 req/s
+Block Rate:            0.00%
+Error Rate:            0.00%
+
+Latency Statistics (ms)
+--------------------------------------------------------------------------------
+Min:                  5.00
+Max:                  206.00
+Mean:                 53.63
+Median:               49.00
+P50:                  49.00
+P95:                  111.00
+P99:                  133.00
+P99.9:                191.00
+Std Dev:              31.92
+
+Security Check Latency (ms)
+--------------------------------------------------------------------------------
+
+HTTP Status Code Distribution
+--------------------------------------------------------------------------------
+  200:      2,356 (100.00%)
+
+Performance vs Expectations
+--------------------------------------------------------------------------------
+Status:              ✓ PASSED
+
+Block Rate:
+  Expected:          5.00%
+  Actual:            0.00%
+  Difference:        -5.00%
+
+Latency:
+  Expected:          100.00ms
+  Actual:            53.63ms
+  Difference:        -46.37ms
+
+Time Series Summary (10s intervals)
+--------------------------------------------------------------------------------
+Interval | Requests | Rate (req/s) | Block % | Error % | P95 (ms)
+--------------------------------------------------------------------------------
+  0- 10s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 10- 20s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 20- 30s  |      720 |        72.00 |    0.00 |    0.00 |      112
+
+================================================================================
+JSON DATA
+================================================================================
+{
+  "experimentId": "exp-1767795477902-tkxauu1",
+  "profileName": "Core Legitimate Traffic",
+  "startTime": 1767795477902,
+  "endTime": 1767795507958,
+  "duration": 30.056,
+  "summary": {
+    "timestamp": 1767795507958,
+    "windowSize": 0,
+    "totalRequests": 2356,
+    "successfulRequests": 2356,
+    "failedRequests": 0,
+    "blockedRequests": 0,
+    "rateLimitedRequests": 0,
+    "wafBlockedRequests": 0,
+    "requestRate": 78.38701091296247,
+    "errorRate": 0,
+    "blockRate": 0,
+    "latency": {
+      "min": 5,
+      "max": 206,
+      "mean": 53.62775891341256,
+      "median": 49,
+      "p50": 49,
+      "p95": 111,
+      "p99": 133,
+      "p999": 191,
+      "stdDev": 31.915745834293066
+    },
+    "securityLatency": {},
+    "statusCodes": {
+      "200": 2356
+    }
+  },
+  "timeSeries": [
+    {
+      "timestamp": 1767795507961,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795507961,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795507961,
+      "windowSize": 10,
+      "totalRequests": 720,
+      "successfulRequests": 720,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 72,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 5,
+        "max": 147,
+        "mean": 54.56111111111111,
+        "median": 50,
+        "p50": 50,
+        "p95": 112,
+        "p99": 131,
+        "p999": 147,
+        "stdDev": 31.482431412683507
+      },
+      "securityLatency": {},
+      "statusCodes": {
+        "200": 720
+      }
+    }
+  ],
+  "errors": [],
+  "comparison": {
+    "expectedBlockRate": 5,
+    "actualBlockRate": 0,
+    "expectedLatency": 100,
+    "actualLatency": 53.62775891341256,
+    "passed": true
+  }
+}

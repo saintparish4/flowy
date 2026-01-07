@@ -202,13 +202,35 @@ export class LoadTester {
       // Extract debug timing from Server-Timing header
       const serverTiming = this.parseServerTiming(response.headers.get('Server-Timing'));
 
+      let errorReason: string | undefined;
+      let blockSource: string | undefined;
+      
       try {
-        const data = (await response.json()) as ResponseData;
+        const data = (await response.json()) as ResponseData & { 
+          error?: string; 
+          geolocation?: { country?: string; reason?: string };
+          ipBlocked?: boolean;
+          reason?: string;
+        };
 
         // Check if request was blocked
         blocked = response.status === 403 || response.status === 429;
         rateLimited = response.status === 429;
         wafBlocked = response.headers.get("X-WAF-Block") === "true";
+
+        // Extract block reason from response
+        if (blocked && data.error) {
+          errorReason = data.error;
+          if (data.geolocation) {
+            blockSource = `geolocation:${data.geolocation.country || 'unknown'}`;
+          } else if (data.ipBlocked) {
+            blockSource = `ip:${data.reason || 'blocked'}`;
+          } else if (wafBlocked) {
+            blockSource = 'waf';
+          } else {
+            blockSource = 'unknown';
+          }
+        }
 
         // Extract security timing if available
         if (data.trace?.performance) {
@@ -266,11 +288,13 @@ export class LoadTester {
       if (this.config.verbose) {
         const status = blocked ? "🚫" : response.ok ? "✓" : "✗";
         const wafInfo = wafBlocked ? ` [WAF:${response.headers.get("X-WAF-Rule")}]` : '';
+        const blockInfo = blockSource ? ` [BLOCK:${blockSource}]` : '';
+        const errorInfo = errorReason && !wafBlocked ? ` [${errorReason}]` : '';
         const serverTimingInfo = serverTiming 
           ? ` [ST: ${Object.entries(serverTiming).map(([k, v]) => `${k}=${v.toFixed(1)}ms`).join(', ')}]` 
           : '';
         console.log(
-          `${status} ${request.method} ${request.path} - ${response.status} (${latency}ms)${wafInfo}${serverTimingInfo}`
+          `${status} ${request.method} ${request.path} - ${response.status} (${latency}ms)${wafInfo}${blockInfo}${errorInfo}${serverTimingInfo}`
         );
       }
     } catch (error: any) {

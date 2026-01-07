@@ -1,6 +1,17 @@
 // Attack Profile Definitions
 // Defines different types of attack patterns for load testing
 
+// Re-export security test profiles
+export {
+  BOT_FOLDER_TEST,
+  RATE_LIMITER_TEST,
+  RULES_FOLDER_TEST,
+  TRACING_FOLDER_TEST,
+  CORE_LEGITIMATE_TRAFFIC,
+  CORE_MIXED_TRAFFIC,
+  SECURITY_TEST_PROFILES,
+} from "./security-tests.js";
+
 export interface AttackProfile {
   name: string;
   description: string;
@@ -615,10 +626,21 @@ export const WAF_COMPREHENSIVE_TEST: AttackProfile = {
   },
 };
 
+// Import security test profiles for ALL_PROFILES
+import {
+  BOT_FOLDER_TEST,
+  RATE_LIMITER_TEST,
+  RULES_FOLDER_TEST,
+  TRACING_FOLDER_TEST,
+  CORE_LEGITIMATE_TRAFFIC,
+  CORE_MIXED_TRAFFIC,
+} from "./security-tests.js";
+
 /**
  * All available profiles
  */
 export const ALL_PROFILES: Record<string, AttackProfile> = {
+  // Original profiles
   BURST_ATTACK,
   SUSTAINED_ATTACK,
   SLOW_DRIP_ATTACK,
@@ -629,6 +651,14 @@ export const ALL_PROFILES: Record<string, AttackProfile> = {
   WAF_SQL_INJECTION_TEST,
   XSS_ATTACK,
   WAF_COMPREHENSIVE_TEST,
+  
+  // Security module test profiles
+  BOT_FOLDER_TEST,
+  RATE_LIMITER_TEST,
+  RULES_FOLDER_TEST,
+  TRACING_FOLDER_TEST,
+  CORE_LEGITIMATE_TRAFFIC,
+  CORE_MIXED_TRAFFIC,
 };
 
 /**

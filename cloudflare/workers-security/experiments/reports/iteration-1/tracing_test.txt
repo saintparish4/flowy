@@ -1,0 +1,278 @@
+================================================================================
+EXPERIMENT REPORT
+================================================================================
+
+Experiment Information
+--------------------------------------------------------------------------------
+Experiment ID:    exp-1767795358793-335knmp
+Profile:          Tracing Folder Test
+Start Time:       2026-01-07T14:15:58.793Z
+End Time:         2026-01-07T14:16:58.884Z
+Duration:         60.09s
+
+Summary Statistics
+--------------------------------------------------------------------------------
+Total Requests:        4,826
+Successful:            3,900
+Failed:                926
+Blocked:               926
+Rate Limited:          0
+WAF Blocked:           0
+
+Request Rate:          80.31 req/s
+Block Rate:            19.19%
+Error Rate:            19.19%
+
+Latency Statistics (ms)
+--------------------------------------------------------------------------------
+Min:                  6.00
+Max:                  312.00
+Mean:                 83.46
+Median:               76.00
+P50:                  76.00
+P95:                  174.00
+P99:                  207.00
+P99.9:                288.00
+Std Dev:              51.28
+
+Security Check Latency (ms)
+--------------------------------------------------------------------------------
+
+HTTP Status Code Distribution
+--------------------------------------------------------------------------------
+  200:      3,900 (80.81%)
+  403:        926 (19.19%)
+
+Performance vs Expectations
+--------------------------------------------------------------------------------
+Status:              ✓ PASSED
+
+Block Rate:
+  Expected:          20.00%
+  Actual:            19.19%
+  Difference:        -0.81%
+
+Latency:
+  Expected:          150.00ms
+  Actual:            83.46ms
+  Difference:        -66.54ms
+
+Time Series Summary (10s intervals)
+--------------------------------------------------------------------------------
+Interval | Requests | Rate (req/s) | Block % | Error % | P95 (ms)
+--------------------------------------------------------------------------------
+  0- 10s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 10- 20s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 20- 30s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 30- 40s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 40- 50s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 50- 60s  |      782 |        78.20 |   20.59 |   20.59 |      170
+
+================================================================================
+JSON DATA
+================================================================================
+{
+  "experimentId": "exp-1767795358793-335knmp",
+  "profileName": "Tracing Folder Test",
+  "startTime": 1767795358793,
+  "endTime": 1767795418884,
+  "duration": 60.091,
+  "summary": {
+    "timestamp": 1767795418884,
+    "windowSize": 0,
+    "totalRequests": 4826,
+    "successfulRequests": 3900,
+    "failedRequests": 926,
+    "blockedRequests": 926,
+    "rateLimitedRequests": 0,
+    "wafBlockedRequests": 0,
+    "requestRate": 80.31152751659982,
+    "errorRate": 19.18773311230833,
+    "blockRate": 19.18773311230833,
+    "latency": {
+      "min": 6,
+      "max": 312,
+      "mean": 83.45752175714878,
+      "median": 76,
+      "p50": 76,
+      "p95": 174,
+      "p99": 207,
+      "p999": 288,
+      "stdDev": 51.27885013117015
+    },
+    "securityLatency": {},
+    "statusCodes": {
+      "200": 3900,
+      "403": 926
+    }
+  },
+  "timeSeries": [
+    {
+      "timestamp": 1767795418892,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795418892,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795418892,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795418892,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795418892,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795418893,
+      "windowSize": 10,
+      "totalRequests": 782,
+      "successfulRequests": 621,
+      "failedRequests": 161,
+      "blockedRequests": 161,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 78.2,
+      "errorRate": 20.588235294117645,
+      "blockRate": 20.588235294117645,
+      "latency": {
+        "min": 7,
+        "max": 283,
+        "mean": 81.66368286445012,
+        "median": 74,
+        "p50": 74,
+        "p95": 170,
+        "p99": 201,
+        "p999": 283,
+        "stdDev": 49.44692249251987
+      },
+      "securityLatency": {},
+      "statusCodes": {
+        "200": 621,
+        "403": 161
+      }
+    }
+  ],
+  "errors": [],
+  "comparison": {
+    "expectedBlockRate": 20,
+    "actualBlockRate": 19.18773311230833,
+    "expectedLatency": 150,
+    "actualLatency": 83.45752175714878,
+    "passed": true
+  }
+}

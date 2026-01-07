@@ -1,4 +1,4 @@
-import type { Env } from "./types";
+import type { Env } from "../types";
 import {
   createTraceInfo,
   createErrorResponse,
@@ -7,37 +7,53 @@ import {
   addTraceHeaders,
   finalizePerformance,
   type EnhancedTraceInfo,
-} from "./tracing";
+} from "../tracing/tracing";
 import {
   createRateLimiter,
   getRateLimitKey,
   getRateLimitProfile,
   RATE_LIMIT_PROFILES,
-} from "./rate-limiter";
+} from "../rate-limiter/rate-limiter";
 import {
   createBurstDetector,
   BURST_PROFILES,
   type BurstConfig,
-} from "./burst-detector";
+} from "../rate-limiter/burst-detector";
 import {
-  createTurnstileVerifier,
-  TurnstileVerifier,
-  requireTurnstile,
-} from "./turnstile";
-import { 
   checkWAF, 
   createWAFBlockResponse, 
   getWAFRules, 
   setWAFDebugMode, 
   generateWAFAnalysisReport,
   analyzeRequest 
-} from "./waf";
+} from "../rules/waf";
 import { 
   getDebugLogger, 
   LatencyDebug,
   type DebugLogger,
   type DebugConfig,
-} from "./debug";
+} from "../utils/debug";
+
+// Bot management imports
+import {
+  createBotProtectionManager,
+  BotProtectionManager,
+  type BotProtectionConfig,
+} from "../bot";
+import { TurnstileVerifier, requireTurnstile } from "../bot/turnstile";
+
+// Geolocation and IP tracking imports
+import { 
+  GeolocationBlocker, 
+  createGeolocationBlocker,
+  type GeolocationConfig,
+} from "../tracing/geolocation";
+import { 
+  IPTracker, 
+  createIPTracker,
+  getIPFromRequest,
+  type IPTrackingConfig,
+} from "../tracing/ip-tracking";
 
 // Cloudflare Workers types
 type ExecutionContext = {
@@ -146,6 +162,11 @@ export default {
     // Enable/disable WAF debug mode based on request
     setWAFDebugMode(debugEnabled);
 
+    // Initialize security managers
+    const geoBlocker = createGeolocationBlocker();
+    const ipTracker = createIPTracker(env);
+    const botManager = createBotProtectionManager(env);
+
     // Start request timing
     if (debugEnabled) {
       LatencyDebug.requestStart(logger, traceId, trace.url, trace.method);
@@ -155,18 +176,62 @@ export default {
 
     try {
       const url = new URL(request.url);
+      const ip = getIPFromRequest(request);
 
       // ====================================================================
-      // SECURITY LAYER 1: WAF CHECK
+      // SECURITY LAYER 0: GEOLOCATION CHECK
+      // ====================================================================
+      const geoResult = geoBlocker.check(request);
+      if (!geoResult.allowed) {
+        if (debugEnabled) {
+          logger.warn('security', `Geolocation blocked: ${geoResult.reason}`, {
+            country: geoResult.country,
+            riskLevel: geoResult.riskLevel,
+          }, traceId);
+        }
+        
+        // Track the blocked request
+        await ipTracker.trackRequest(ip, request, { blocked: true });
+        
+        return createErrorResponse(
+          `Access denied from your region`,
+          403,
+          trace,
+          { geolocation: { country: geoResult.country, reason: geoResult.reason } }
+        );
+      }
+
+      // ====================================================================
+      // SECURITY LAYER 1: IP REPUTATION CHECK
+      // ====================================================================
+      const ipBlockCheck = await ipTracker.shouldBlock(ip);
+      if (ipBlockCheck.blocked) {
+        if (debugEnabled) {
+          logger.warn('security', `IP blocked: ${ipBlockCheck.reason}`, {
+            ip,
+            reason: ipBlockCheck.reason,
+          }, traceId);
+        }
+        
+        return createErrorResponse(
+          `Access denied`,
+          403,
+          trace,
+          { ipBlocked: true, reason: ipBlockCheck.reason }
+        );
+      }
+
+      // ====================================================================
+      // SECURITY LAYER 2: WAF CHECK (XSS + Deserialization)
       // ====================================================================
       if (debugEnabled) {
         LatencyDebug.securityCheckStart(logger, 'waf', traceId);
-        logger.info('security', '▶ Starting WAF check', {
+        logger.info('security', '▶ Starting WAF check (XSS + Deserialization)', {
           url: url.pathname + url.search,
         }, traceId);
       }
 
-      const wafResult = checkWAF(request, traceId);
+      const wafResult = await checkWAF(request, traceId);
       
       if (debugEnabled) {
         const wafDuration = LatencyDebug.securityCheckEnd(logger, 'waf', traceId, wafResult);
@@ -185,6 +250,9 @@ export default {
         const response = createWAFBlockResponse(wafResult);
         logTrace(trace, { waf: "blocked", rule: wafResult.rule?.id });
         
+        // Track WAF violation
+        await ipTracker.trackRequest(ip, request, { blocked: true, wafViolation: true });
+        
         if (debugEnabled) {
           LatencyDebug.requestEnd(logger, traceId, 403);
           LatencyDebug.breakdown(logger, traceId);
@@ -193,6 +261,9 @@ export default {
         finalizePerformance(trace);
         return addTraceHeaders(response, trace);
       }
+
+      // Track normal request
+      await ipTracker.trackRequest(ip, request);
 
       // ====================================================================
       // ROUTING
@@ -209,19 +280,19 @@ export default {
           break;
 
         case "/api/public":
-          response = await handlePublicAPI(request, env, trace, logger, debugEnabled, requestTimestamp);
+          response = await handlePublicAPI(request, env, trace, logger, debugEnabled, requestTimestamp, ipTracker);
           break;
 
         case "/api/protected":
-          response = await handleProtectedAPI(request, env, trace, logger, debugEnabled, requestTimestamp);
+          response = await handleProtectedAPI(request, env, trace, logger, debugEnabled, requestTimestamp, ipTracker);
           break;
 
         case "/api/login":
-          response = await handleLogin(request, env, trace, logger, debugEnabled, requestTimestamp);
+          response = await handleLogin(request, env, trace, logger, debugEnabled, requestTimestamp, ipTracker, botManager);
           break;
 
         case "/api/status":
-          response = await handleStatus(request, env, trace, logger, debugEnabled, requestTimestamp);
+          response = await handleStatus(request, env, trace, logger, debugEnabled, requestTimestamp, geoBlocker, ipTracker);
           break;
 
         case "/api/rules":
@@ -305,30 +376,37 @@ async function handleRoot(
 ): Promise<Response> {
   const docs = {
     name: "Cloudflare Workers Security Example",
-    version: "1.0.0",
+    version: "2.0.0",
     endpoints: {
       "/": "API documentation (this page)",
       "/api/public": "Public endpoint with relaxed rate limiting",
       "/api/protected": "Protected endpoint requiring Turnstile verification",
-      "/api/login": "Login endpoint with strict rate limiting",
+      "/api/login": "Login endpoint with strict rate limiting and credential stuffing detection",
       "/api/status": "Service status and configuration info",
-      "/api/rules": "List active WAF rules",
+      "/api/rules": "List active WAF rules (XSS + Deserialization)",
       "/api/debug/waf": "WAF debug analysis (POST with URL to analyze)",
       "/api/debug/timing": "Request timing debug info",
     },
     features: [
       "Request tracing with unique trace IDs",
-      "Rate limiting using Cloudflare KV",
+      "Rate limiting using Cloudflare KV (DoS/DDoS, brute force, scraping)",
       "Burst detection with queuing and throttling",
       "Turnstile bot protection",
-      "WAF rule simulation",
-      "Mock implementations for local development",
+      "WAF rules (XSS + Insecure Deserialization)",
+      "Bot management (credential stuffing, spam detection)",
+      "Geolocation blocking",
+      "IP tracking and reputation",
+      "Session-aware rate limiting",
       "Comprehensive debug logging",
     ],
     security: {
       turnstileEnabled: env.TURNSTILE_ENABLED === "true",
       wafEnabled: true,
+      wafCategories: ["xss", "insecure-deserialization"],
       rateLimitingEnabled: true,
+      geolocationBlockingEnabled: true,
+      ipTrackingEnabled: true,
+      botProtectionEnabled: true,
     },
     debug: {
       enabled: debugEnabled,
@@ -348,9 +426,11 @@ async function handlePublicAPI(
   trace: EnhancedTraceInfo,
   logger: DebugLogger,
   debugEnabled: boolean,
-  requestTimestamp: number
+  requestTimestamp: number,
+  ipTracker: IPTracker
 ): Promise<Response> {
   const traceId = trace.traceId;
+  const ip = getIPFromRequest(request);
   
   const rateLimiter = createRateLimiter(env);
   const burstDetector = createBurstDetector(env);
@@ -362,7 +442,7 @@ async function handlePublicAPI(
   const burstConfig: BurstConfig = BURST_PROFILES.RELAXED;
 
   // ====================================================================
-  // SECURITY LAYER 2: BURST DETECTION
+  // SECURITY LAYER 3: BURST DETECTION
   // ====================================================================
   if (debugEnabled) {
     LatencyDebug.securityCheckStart(logger, 'burst', traceId);
@@ -385,6 +465,8 @@ async function handlePublicAPI(
   
   if (burstResult.isBurst) {
     if (burstResult.recommendation === 'block' || burstResult.severity === 'critical') {
+      await ipTracker.trackRequest(ip, request, { blocked: true, burstViolation: true });
+      
       logTrace(trace, { 
         burst: "blocked", 
         severity: burstResult.severity,
@@ -412,8 +494,6 @@ async function handlePublicAPI(
         }
       }
     } else if (burstResult.recommendation === 'throttle') {
-      // For low/medium-severity bursts, allow through but add small delay to smooth traffic
-      // This reduces false positives for legitimate traffic bursts and wave patterns
       if (debugEnabled) {
         logger.debug('security', 'Request throttled (burst smoothing)', {
           severity: burstResult.severity,
@@ -421,17 +501,14 @@ async function handlePublicAPI(
           shortWindowLimit: burstResult.shortWindowLimit,
         }, traceId);
       }
-      // Add minimal delay (2-5ms) to smooth out the burst without significant impact
-      // Further reduced to minimize latency impact on legitimate traffic
       const throttleDelay = burstResult.severity === 'medium' ? 5 : 2;
       await new Promise(resolve => setTimeout(resolve, throttleDelay));
       logTrace(trace, { burst: "throttled", severity: burstResult.severity });
     }
-    // 'allow' recommendation means continue normally
   }
 
   // ====================================================================
-  // SECURITY LAYER 3: RATE LIMITING
+  // SECURITY LAYER 4: RATE LIMITING
   // ====================================================================
   if (debugEnabled) {
     LatencyDebug.securityCheckStart(logger, 'rate-limit', traceId);
@@ -449,12 +526,14 @@ async function handlePublicAPI(
       allowed: rateLimit.allowed,
       limit: rateLimit.limit,
       remaining: rateLimit.remaining,
-      resetAt: new Date(rateLimit.resetAt).toISOString(),
+      resetAt: new Date(rateLimit.resetAt * 1000).toISOString(),
       duration: `${rlDuration.toFixed(3)}ms`,
     }, traceId);
   }
 
   if (!rateLimit.allowed) {
+    await ipTracker.trackRequest(ip, request, { blocked: true, rateLimitViolation: true });
+    
     logTrace(trace, { rateLimit: "exceeded", profile: "relaxed" });
     return createErrorResponse("Rate limit exceeded", 429, trace, {
       rateLimit: {
@@ -495,12 +574,14 @@ async function handleProtectedAPI(
   trace: EnhancedTraceInfo,
   logger: DebugLogger,
   debugEnabled: boolean,
-  requestTimestamp: number
+  requestTimestamp: number,
+  ipTracker: IPTracker
 ): Promise<Response> {
   const traceId = trace.traceId;
+  const ip = getIPFromRequest(request);
 
   // ====================================================================
-  // SECURITY LAYER 2: TURNSTILE VERIFICATION
+  // SECURITY LAYER 3: TURNSTILE VERIFICATION
   // ====================================================================
   if (debugEnabled) {
     LatencyDebug.securityCheckStart(logger, 'turnstile', traceId);
@@ -519,6 +600,8 @@ async function handleProtectedAPI(
   }
 
   if (!turnstileResult.success) {
+    await ipTracker.trackRequest(ip, request, { challenged: true });
+    
     logTrace(trace, { turnstile: "failed" });
     return createErrorResponse(
       turnstileResult.error || "Verification failed",
@@ -551,6 +634,8 @@ async function handleProtectedAPI(
   
   if (burstResult.isBurst) {
     if (burstResult.recommendation === 'block' || burstResult.severity === 'critical') {
+      await ipTracker.trackRequest(ip, request, { blocked: true, burstViolation: true });
+      
       logTrace(trace, { burst: "blocked", severity: burstResult.severity });
       return createErrorResponse("Rate limit exceeded (burst detected)", 429, trace, {
         burst: {
@@ -585,6 +670,8 @@ async function handleProtectedAPI(
   }
 
   if (!rateLimit.allowed) {
+    await ipTracker.trackRequest(ip, request, { blocked: true, rateLimitViolation: true });
+    
     logTrace(trace, { rateLimit: "exceeded", profile: "normal" });
     return createErrorResponse("Rate limit exceeded", 429, trace, {
       rateLimit,
@@ -601,7 +688,7 @@ async function handleProtectedAPI(
 }
 
 /**
- * Login endpoint with strict rate limiting
+ * Login endpoint with strict rate limiting and credential stuffing detection
  */
 async function handleLogin(
   request: Request,
@@ -609,12 +696,43 @@ async function handleLogin(
   trace: EnhancedTraceInfo,
   logger: DebugLogger,
   debugEnabled: boolean,
-  requestTimestamp: number
+  requestTimestamp: number,
+  ipTracker: IPTracker,
+  botManager: BotProtectionManager
 ): Promise<Response> {
   const traceId = trace.traceId;
+  const ip = getIPFromRequest(request);
 
   if (request.method !== "POST") {
     return createErrorResponse("Method not allowed", 405, trace);
+  }
+
+  // ====================================================================
+  // SECURITY LAYER 3: CREDENTIAL STUFFING DETECTION
+  // ====================================================================
+  const credentialDetector = botManager.getCredentialStuffingDetector();
+  if (credentialDetector) {
+    const credResult = await credentialDetector.check(ip);
+    
+    if (debugEnabled) {
+      logger.debug('security', 'Credential stuffing check', {
+        isAttack: credResult.isAttack,
+        confidence: credResult.confidence,
+        severity: credResult.severity,
+        recommendation: credResult.recommendation,
+      }, traceId);
+    }
+    
+    if (credResult.recommendation === 'lockout' || credResult.recommendation === 'block') {
+      await ipTracker.trackRequest(ip, request, { blocked: true, credentialStuffing: true });
+      
+      return createErrorResponse(
+        "Too many login attempts. Your IP has been temporarily blocked.",
+        403,
+        trace,
+        { credentialStuffing: { severity: credResult.severity, reason: credResult.reason } }
+      );
+    }
   }
 
   const rateLimiter = createRateLimiter(env);
@@ -626,7 +744,7 @@ async function handleLogin(
   const burstConfig: BurstConfig = BURST_PROFILES.STRICT;
 
   // ====================================================================
-  // SECURITY LAYER 2: BURST DETECTION (STRICT)
+  // SECURITY LAYER 4: BURST DETECTION (STRICT)
   // ====================================================================
   if (debugEnabled) {
     LatencyDebug.securityCheckStart(logger, 'burst', traceId);
@@ -650,6 +768,8 @@ async function handleLogin(
     if (burstResult.recommendation === 'block' || 
         burstResult.severity === 'critical' || 
         burstResult.severity === 'high') {
+      await ipTracker.trackRequest(ip, request, { blocked: true, burstViolation: true });
+      
       logTrace(trace, {
         burst: "blocked",
         severity: burstResult.severity,
@@ -683,7 +803,7 @@ async function handleLogin(
   }
 
   // ====================================================================
-  // SECURITY LAYER 3: RATE LIMITING (STRICT)
+  // SECURITY LAYER 5: RATE LIMITING (STRICT)
   // ====================================================================
   if (debugEnabled) {
     LatencyDebug.securityCheckStart(logger, 'rate-limit', traceId);
@@ -706,6 +826,8 @@ async function handleLogin(
   }
 
   if (!rateLimit.allowed) {
+    await ipTracker.trackRequest(ip, request, { blocked: true, rateLimitViolation: true });
+    
     logTrace(trace, {
       rateLimit: "exceeded",
       profile: "strict",
@@ -717,6 +839,17 @@ async function handleLogin(
       trace,
       { rateLimit }
     );
+  }
+
+  // Record login attempt for credential stuffing detection
+  if (credentialDetector) {
+    await credentialDetector.recordAttempt({
+      timestamp: Date.now(),
+      ip,
+      success: true, // In real implementation, this would depend on actual login result
+      userAgent: request.headers.get('User-Agent') || undefined,
+      country: request.headers.get('CF-IPCountry') || undefined,
+    });
   }
 
   const data = {
@@ -737,10 +870,13 @@ async function handleStatus(
   trace: EnhancedTraceInfo,
   logger: DebugLogger,
   debugEnabled: boolean,
-  requestTimestamp: number
+  requestTimestamp: number,
+  geoBlocker: GeolocationBlocker,
+  ipTracker: IPTracker
 ): Promise<Response> {
   const status = {
     service: "workers-security-example",
+    version: "2.0.0",
     environment: env.ENVIRONMENT,
     timestamp: Date.now(),
     features: {
@@ -751,15 +887,31 @@ async function handleStatus(
       rateLimit: {
         enabled: true,
         backend: env.RATE_LIMIT_KV ? "kv" : "mock",
+        profiles: ["AUTH", "API", "PUBLIC", "SEARCH", "UPLOAD"],
       },
       burstDetection: {
         enabled: true,
         backend: env.RATE_LIMIT_KV ? "kv" : "mock",
+        profiles: ["STRICT", "NORMAL", "RELAXED"],
       },
       waf: {
         enabled: true,
+        categories: ["xss", "insecure-deserialization"],
         rulesCount: getWAFRules().length,
         debugEnabled: debugEnabled,
+      },
+      botProtection: {
+        enabled: true,
+        features: ["credential-stuffing", "spam-detection", "session-management"],
+      },
+      geolocation: {
+        enabled: true,
+        blockedCountries: geoBlocker.getBlockedCountries(),
+        challengedCountries: geoBlocker.getChallengedCountries(),
+      },
+      ipTracking: {
+        enabled: true,
+        features: ["reputation", "auto-block", "event-logging"],
       },
       tracing: {
         enabled: true,
@@ -794,6 +946,10 @@ async function handleRules(
 
   const data = {
     count: rules.length,
+    categories: {
+      xss: rules.filter(r => r.category === 'xss').length,
+      "insecure-deserialization": rules.filter(r => r.category === 'insecure-deserialization').length,
+    },
     rules: rules.map((rule) => ({
       id: rule.id,
       description: rule.description,
@@ -841,6 +997,7 @@ async function handleWAFDebug(
       analysis: {
         wouldBeBlocked: analysis.wouldBeBlocked,
         matchingRulesCount: analysis.matchingRules.length,
+        deserializationCheck: analysis.deserializationCheck,
         matchingRules: analysis.matchingRules.map(m => ({
           ruleId: m.rule.id,
           action: m.rule.action,

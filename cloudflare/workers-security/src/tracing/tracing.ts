@@ -1,4 +1,4 @@
-import { TraceInfo } from "./types";
+import { TraceInfo } from "../types";
 
 // Performance timing data for a request
 export interface PerformanceMetrics {

@@ -1,9 +1,10 @@
 /**
  * Adaptive Rate Limiting System
  * Dynamically adjusts rate limits based on traffic composition and patterns
+ * Used for bot management and adaptive response to attack patterns
  */
 
-import type { RateLimitConfig } from "./types";
+import type { RateLimitConfig } from "../types";
 import type { TrafficClass, ClassificationResult } from "./traffic-classifier";
 
 /**
@@ -402,3 +403,4 @@ export const ADAPTIVE_CONFIGS = {
     maxMultiplier: 10.0,
   },
 };
+

@@ -1,6 +1,7 @@
-import type { WAFRule, WAFResult } from './types';
+import type { WAFRule, WAFResult } from '../types';
 import { WAF_RULES, createWAFConfig, type EnhancedWAFRule } from './waf-config';
-import { getDebugLogger, WAFDebug, type DebugLogger } from './debug';
+import { getDebugLogger, WAFDebug, type DebugLogger } from '../utils/debug';
+import { checkDeserializationPatterns, getHighestSeverity } from './deserialization-patterns';
 
 // Global WAF configuration instance
 const wafConfig = createWAFConfig();
@@ -29,29 +30,35 @@ function evaluateCondition(
   condition: WAFRule['conditions'][0],
   request: Request,
   url: URL,
+  requestBody: string,
   logger?: DebugLogger,
   ruleId?: string,
   traceId?: string
 ): boolean {
-  let fieldValue = '';
-  let fieldSource = '';
+  // For 'query' field, check both query string AND body (XSS can be in either)
+  // For 'body' field, only check body
+  let fieldsToCheck: Array<{ value: string; source: string }> = [];
 
   switch (condition.field) {
     case 'path':
-      fieldValue = url.pathname;
-      fieldSource = 'URL pathname';
+      fieldsToCheck = [{ value: url.pathname, source: 'URL pathname' }];
       break;
     case 'query':
-      fieldValue = url.search;
-      fieldSource = 'URL query string';
+      // Check both query string AND body for XSS patterns
+      fieldsToCheck = [
+        { value: url.search, source: 'URL query string' },
+        { value: requestBody, source: 'Request body' },
+      ];
       break;
     case 'user-agent':
-      fieldValue = request.headers.get('User-Agent') || '';
-      fieldSource = 'User-Agent header';
+      fieldsToCheck = [{ value: request.headers.get('User-Agent') || '', source: 'User-Agent header' }];
       break;
     case 'host':
-      fieldValue = url.hostname;
-      fieldSource = 'URL hostname';
+      fieldsToCheck = [{ value: url.hostname, source: 'URL hostname' }];
+      break;
+    case 'body':
+      // Only check body content
+      fieldsToCheck = [{ value: requestBody, source: 'Request body' }];
       break;
     default:
       if (logger && debugModeEnabled) {
@@ -63,49 +70,61 @@ function evaluateCondition(
       return false;
   }
 
-  // Convert to lowercase for case-insensitive matching
-  const originalFieldValue = fieldValue;
-  fieldValue = fieldValue.toLowerCase();
+  // Check each field value against the condition
   const conditionValue = condition.value.toLowerCase();
-
   let matched = false;
+  let matchedField: { value: string; source: string } | undefined;
 
-  switch (condition.operator) {
-    case 'equals':
-      matched = fieldValue === conditionValue;
-      break;
-    case 'contains':
-      matched = fieldValue.includes(conditionValue);
-      break;
-    case 'starts-with':
-      matched = fieldValue.startsWith(conditionValue);
-      break;
-    case 'ends-with':
-      matched = fieldValue.endsWith(conditionValue);
-      break;
-    case 'regex':
-      try {
-        matched = new RegExp(conditionValue).test(fieldValue);
-      } catch (e) {
+  for (const field of fieldsToCheck) {
+    const originalFieldValue = field.value;
+    const fieldValue = field.value.toLowerCase();
+
+    switch (condition.operator) {
+      case 'equals':
+        matched = fieldValue === conditionValue;
+        break;
+      case 'contains':
+        matched = fieldValue.includes(conditionValue);
+        break;
+      case 'starts-with':
+        matched = fieldValue.startsWith(conditionValue);
+        break;
+      case 'ends-with':
+        matched = fieldValue.endsWith(conditionValue);
+        break;
+      case 'regex':
+        try {
+          matched = new RegExp(conditionValue, 'i').test(fieldValue);
+        } catch (e) {
+          if (logger && debugModeEnabled) {
+            logger.error('waf-condition', `Invalid regex pattern`, {
+              ruleId,
+              pattern: condition.value,
+              error: String(e),
+            }, traceId);
+          }
+          matched = false;
+        }
+        break;
+      default:
         if (logger && debugModeEnabled) {
-          logger.error('waf-condition', `Invalid regex pattern`, {
+          logger.warn('waf-condition', `Unknown operator: ${condition.operator}`, {
             ruleId,
-            pattern: condition.value,
-            error: String(e),
+            operator: condition.operator,
           }, traceId);
         }
         matched = false;
-      }
-      break;
-    default:
-      if (logger && debugModeEnabled) {
-        logger.warn('waf-condition', `Unknown operator: ${condition.operator}`, {
-          ruleId,
-          operator: condition.operator,
-        }, traceId);
-      }
-      return false;
+    }
+
+    if (matched) {
+      matchedField = field;
+      break; // Found a match, stop checking other fields
+    }
   }
+
+  // Use the matched field for logging, or first field if no match
+  const logFieldValue = matchedField?.value || fieldsToCheck[0]?.value || '';
+  const logFieldSource = matchedField?.source || fieldsToCheck[0]?.source || 'unknown';
 
   // Log condition evaluation
   if (logger && debugModeEnabled) {
@@ -113,10 +132,20 @@ function evaluateCondition(
       logger,
       ruleId || 'unknown',
       condition,
-      originalFieldValue,
+      logFieldValue,
       matched,
       traceId
     );
+    
+    if (matched && matchedField) {
+      logger.debug('waf-condition', `Pattern matched in ${matchedField.source}`, {
+        ruleId,
+        field: condition.field,
+        operator: condition.operator,
+        pattern: condition.value,
+        source: matchedField.source,
+      }, traceId);
+    }
   }
 
   return matched;
@@ -124,8 +153,10 @@ function evaluateCondition(
 
 /**
  * Check if request matches any WAF rules with comprehensive debugging
+ * Focused on XSS and insecure deserialization detection
+ * Now supports POST body scanning
  */
-export function checkWAF(request: Request, traceId?: string): WAFResult {
+export async function checkWAF(request: Request, traceId?: string): Promise<WAFResult> {
   const startTime = performance.now();
   const url = new URL(request.url);
   const enabledRules = wafConfig.getEnabledRules();
@@ -139,13 +170,42 @@ export function checkWAF(request: Request, traceId?: string): WAFResult {
 
   if (logger && debugModeEnabled) {
     logger.info('waf', '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', undefined, requestTraceId);
-    logger.info('waf', 'Starting WAF evaluation', {
+    logger.info('waf', 'Starting WAF evaluation (XSS + Deserialization)', {
       url: url.pathname + url.search,
       method: request.method,
       totalRules: enabledRules.length,
       userAgent: request.headers.get('User-Agent')?.slice(0, 50),
     }, requestTraceId);
     logger.startTiming('waf-total', requestTraceId);
+  }
+
+  // Read request body for POST/PUT/PATCH requests (clone to avoid consuming original)
+  let requestBody = '';
+  const contentType = request.headers.get('Content-Type') || '';
+  const isBodyRequest = ['POST', 'PUT', 'PATCH'].includes(request.method);
+  
+  if (isBodyRequest) {
+    try {
+      const clonedRequest = request.clone();
+      if (contentType.includes('application/json')) {
+        const json = await clonedRequest.json().catch(() => null);
+        requestBody = json ? JSON.stringify(json) : '';
+      } else if (contentType.includes('application/x-www-form-urlencoded')) {
+        requestBody = await clonedRequest.text().catch(() => '');
+      } else if (contentType.includes('text/') || contentType.includes('application/xml')) {
+        requestBody = await clonedRequest.text().catch(() => '');
+      } else {
+        // Try to read as text for other content types
+        requestBody = await clonedRequest.text().catch(() => '');
+      }
+    } catch (error) {
+      if (logger && debugModeEnabled) {
+        logger.warn('waf', 'Failed to read request body', {
+          error: String(error),
+        }, requestTraceId);
+      }
+      requestBody = '';
+    }
   }
 
   // Log request details for debugging
@@ -155,9 +215,83 @@ export function checkWAF(request: Request, traceId?: string): WAFResult {
       search: url.search,
       searchDecoded: decodeURIComponent(url.search),
       userAgent: request.headers.get('User-Agent'),
-      contentType: request.headers.get('Content-Type'),
+      contentType,
       method: request.method,
+      hasBody: isBodyRequest,
+      bodyLength: requestBody.length,
+      bodyPreview: requestBody.slice(0, 200),
     }, requestTraceId);
+  }
+
+  // Check query string for deserialization patterns
+  const queryString = url.search;
+  if (queryString.length > 10) {
+    const deserCheck = checkDeserializationPatterns(queryString, { checkBase64: true });
+    if (deserCheck.detected) {
+      const severity = getHighestSeverity(deserCheck.matches);
+      if (severity === 'critical' || severity === 'high') {
+        const checkDuration = performance.now() - startTime;
+        const matchedPattern = deserCheck.matches[0]?.pattern;
+        
+        if (logger && debugModeEnabled) {
+          logger.warn('waf', `Deserialization attack pattern detected in query string`, {
+            patternId: matchedPattern?.id,
+            patternName: matchedPattern?.name,
+            severity,
+          }, requestTraceId);
+        }
+        
+        return {
+          blocked: true,
+          rule: {
+            id: matchedPattern?.id || 'deser-pattern',
+            description: matchedPattern?.description || 'Deserialization attack detected',
+            action: 'block',
+            conditions: [],
+          },
+          reason: matchedPattern?.description || 'Insecure deserialization pattern detected in query string',
+          timing: {
+            checkDuration,
+            rulesEvaluated: 0,
+          },
+        };
+      }
+    }
+  }
+
+  // Check POST body for deserialization patterns
+  if (requestBody.length > 10) {
+    const deserCheck = checkDeserializationPatterns(requestBody, { checkBase64: true });
+    if (deserCheck.detected) {
+      const severity = getHighestSeverity(deserCheck.matches);
+      if (severity === 'critical' || severity === 'high') {
+        const checkDuration = performance.now() - startTime;
+        const matchedPattern = deserCheck.matches[0]?.pattern;
+        
+        if (logger && debugModeEnabled) {
+          logger.warn('waf', `Deserialization attack pattern detected in POST body`, {
+            patternId: matchedPattern?.id,
+            patternName: matchedPattern?.name,
+            severity,
+          }, requestTraceId);
+        }
+        
+        return {
+          blocked: true,
+          rule: {
+            id: matchedPattern?.id || 'deser-pattern',
+            description: matchedPattern?.description || 'Deserialization attack detected',
+            action: 'block',
+            conditions: [],
+          },
+          reason: matchedPattern?.description || 'Insecure deserialization pattern detected in POST body',
+          timing: {
+            checkDuration,
+            rulesEvaluated: 0,
+          },
+        };
+      }
+    }
   }
 
   for (const rule of enabledRules) {
@@ -182,6 +316,7 @@ export function checkWAF(request: Request, traceId?: string): WAFResult {
         condition, 
         request, 
         url, 
+        requestBody,
         logger, 
         rule.id, 
         requestTraceId
@@ -365,6 +500,10 @@ export function analyzeRequest(request: Request): {
       matched: boolean;
     }>;
   }>;
+  deserializationCheck?: {
+    detected: boolean;
+    matches: Array<{ patternId: string; patternName: string }>;
+  };
 } {
   const url = new URL(request.url);
   const enabledRules = wafConfig.getEnabledRules();
@@ -385,6 +524,20 @@ export function analyzeRequest(request: Request): {
       matched: boolean;
     }>;
   }> = [];
+
+  // Check deserialization patterns
+  const queryString = url.search;
+  let deserializationCheck;
+  if (queryString.length > 10) {
+    const deserCheck = checkDeserializationPatterns(queryString, { checkBase64: true });
+    deserializationCheck = {
+      detected: deserCheck.detected,
+      matches: deserCheck.matches.map(m => ({
+        patternId: m.pattern.id,
+        patternName: m.pattern.name,
+      })),
+    };
+  }
 
   for (const rule of enabledRules) {
     const conditionResults: Array<{
@@ -416,7 +569,8 @@ export function analyzeRequest(request: Request): {
           break;
       }
 
-      const matched = evaluateCondition(condition, request, url);
+      // analyzeRequest is synchronous and doesn't read body, pass empty string
+      const matched = evaluateCondition(condition, request, url, '');
       
       conditionResults.push({
         condition,
@@ -445,12 +599,14 @@ export function analyzeRequest(request: Request): {
     }
   }
 
-  const wouldBeBlocked = matchingRules.some(m => m.rule.action === 'block');
+  const wouldBeBlocked = matchingRules.some(m => m.rule.action === 'block') ||
+                         (deserializationCheck?.detected === true && deserializationCheck.matches.length > 0);
 
   return {
     wouldBeBlocked,
     matchingRules,
     checkedRules,
+    deserializationCheck,
   };
 }
 
@@ -463,7 +619,7 @@ export function generateWAFAnalysisReport(request: Request): string {
   
   const lines: string[] = [
     '╔════════════════════════════════════════════════════════════════════════╗',
-    '║                     WAF REQUEST ANALYSIS REPORT                        ║',
+    '║            WAF REQUEST ANALYSIS REPORT (XSS + Deserialization)         ║',
     '╚════════════════════════════════════════════════════════════════════════╝',
     '',
     '┌─ Request Details ──────────────────────────────────────────────────────┐',
@@ -475,6 +631,16 @@ export function generateWAFAnalysisReport(request: Request): string {
     `┌─ Result: ${analysis.wouldBeBlocked ? '🚫 WOULD BE BLOCKED' : '✅ WOULD BE ALLOWED'} ${'─'.repeat(50)}┐`,
     '',
   ];
+
+  // Deserialization check results
+  if (analysis.deserializationCheck?.detected) {
+    lines.push('┌─ Deserialization Patterns Detected ─────────────────────────────────────┐');
+    analysis.deserializationCheck.matches.forEach(m => {
+      lines.push(`│ [BLOCK] ${m.patternId}: ${m.patternName.slice(0, 55)}`.padEnd(75) + '│');
+    });
+    lines.push('└─────────────────────────────────────────────────────────────────────────┘');
+    lines.push('');
+  }
 
   if (analysis.matchingRules.length > 0) {
     lines.push('┌─ Matching Rules ────────────────────────────────────────────────────────┐');
@@ -488,7 +654,7 @@ export function generateWAFAnalysisReport(request: Request): string {
       lines.push('│'.padEnd(75) + '│');
     });
     lines.push('└─────────────────────────────────────────────────────────────────────────┘');
-  } else {
+  } else if (!analysis.deserializationCheck?.detected) {
     lines.push('┌─ No Matching Rules ─────────────────────────────────────────────────────┐');
     lines.push('│ No WAF rules matched this request.'.padEnd(75) + '│');
     lines.push('└─────────────────────────────────────────────────────────────────────────┘');

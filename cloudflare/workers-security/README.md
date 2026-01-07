@@ -1,18 +1,40 @@
-# Example: Cloudflare Workers Security
+# Cloudflare Workers Security
 
-A comprehensive example demonstrating Cloudflare Workers security features including rate limiting, Turnstile bot protection, WAF rules, and request tracing.
+A comprehensive security framework for Cloudflare Workers implementing multi-layered protection including rate limiting, bot management, WAF rules, geolocation blocking, and IP tracking.
 
 ## Features
 
-### 🔒 Security Features
-- **Rate Limiting**: Token bucket algorithm using Cloudflare KV with multiple profiles
-- **Bot Protection**: Cloudflare Turnstile integration with automatic fallback
-- **WAF Rules**: Simulated Web Application Firewall with common attack patterns
+### 🔒 Security Modules
+
+#### Rate Limiter (`src/rate-limiter/`)
+- **Brute Force Protection**: Sliding window counter with Cloudflare KV
+- **DoS/DDoS Protection**: Burst detection with short and medium window analysis
+- **Web Scraping Prevention**: Adaptive rate limiting based on request patterns
+- **Session-Aware**: Tracks user sessions for behavioral analysis
+
+#### Bot Management (`src/bot/`)
+- **Credential Stuffing Detection**: Identifies automated login attempts with leaked credentials
+- **Spam Detection**: Detects promotional content, link spam, and automated posting
+- **Session Management**: Behavioral analysis and session tracking
+- **Traffic Classification**: Distinguishes legitimate, suspicious, and malicious traffic
+- **Turnstile Integration**: Cloudflare's bot protection with automatic fallback
+- **Adaptive Rate Limiting**: Dynamic rate limits based on traffic patterns
+
+#### Rules/WAF (`src/rules/`)
+- **XSS Protection**: Detects and blocks cross-site scripting attacks in query strings and POST bodies
+- **Insecure Deserialization Protection**: Blocks Java, Python, PHP, .NET, and YAML deserialization attacks
+- **Base64 Attack Detection**: Scans encoded payloads for malicious patterns
+- **Pattern Matching**: Comprehensive regex and string-based detection
+
+#### Tracing (`src/tracing/`)
 - **Request Tracing**: Unified trace ID system for debugging and monitoring
+- **Geolocation Blocking**: Block or challenge requests from high-threat countries/regions
+- **IP Tracking**: IP reputation management with auto-blocking for low-reputation IPs
+- **Performance Metrics**: Detailed timing and latency measurements
 
 ### 🛠️ Development Features
 - **Mock Mode**: Fully functional local development without Cloudflare credentials
-- **Multiple Rate Limit Profiles**: Pre-configured profiles for different use cases
+- **Load Testing**: Comprehensive test suite with 6 attack profiles
 - **TypeScript**: Full type safety with Cloudflare Workers types
 - **Comprehensive Logging**: Detailed trace information for every request
 
@@ -57,7 +79,7 @@ curl http://localhost:8787/
 ```
 
 ### `GET /api/public`
-Public endpoint with relaxed rate limiting (1000 requests/minute).
+Public endpoint with relaxed rate limiting.
 
 **Example:**
 ```bash
@@ -87,7 +109,7 @@ curl http://localhost:8787/api/public
 - `X-Trace-ID`: Unique trace ID for this request
 
 ### `GET /api/protected`
-Protected endpoint requiring Turnstile verification (100 requests/minute).
+Protected endpoint requiring Turnstile verification.
 
 **Example:**
 ```bash
@@ -97,14 +119,19 @@ curl -H "CF-Turnstile-Token: your-token-here" http://localhost:8787/api/protecte
 In mock mode, any token value works except "fail" or "invalid".
 
 ### `POST /api/login`
-Login endpoint with strict rate limiting (5 requests/minute).
+Login endpoint with strict rate limiting and bot protection.
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8787/api/login
+curl -X POST http://localhost:8787/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"user@example.com","password":"password123"}'
 ```
 
-This demonstrates how to protect authentication endpoints from brute force attacks.
+This endpoint is protected by:
+- Strict rate limiting (prevents brute force)
+- Credential stuffing detection
+- Bot session management
 
 ### `GET /api/status`
 Service status and configuration information.
@@ -112,28 +139,6 @@ Service status and configuration information.
 **Example:**
 ```bash
 curl http://localhost:8787/api/status
-```
-
-**Response:**
-```json
-{
-  "service": "workers-security-example",
-  "environment": "development",
-  "features": {
-    "turnstile": {
-      "enabled": false,
-      "configured": false
-    },
-    "rateLimit": {
-      "enabled": true,
-      "backend": "mock"
-    },
-    "waf": {
-      "enabled": true,
-      "rulesCount": 5
-    }
-  }
-}
 ```
 
 ### `GET /api/rules`
@@ -144,59 +149,193 @@ List all active WAF rules.
 curl http://localhost:8787/api/rules
 ```
 
-## Rate Limiting
+## Project Structure
 
-### Profiles
+```
+cloudflare/workers-security/
+├── src/
+│   ├── core/
+│   │   └── index.ts              # Main worker entry point
+│   ├── rate-limiter/
+│   │   ├── rate-limiter.ts       # Core rate limiting logic
+│   │   └── burst-detector.ts     # Burst detection for DoS/DDoS
+│   ├── bot/
+│   │   ├── index.ts              # Bot protection manager
+│   │   ├── credential-stuffing-detector.ts
+│   │   ├── spam-detector.ts
+│   │   ├── session-manager.ts
+│   │   ├── traffic-classifier.ts
+│   │   ├── adaptive-rate-limiter.ts
+│   │   └── turnstile.ts
+│   ├── rules/
+│   │   ├── waf.ts                # WAF rule engine
+│   │   ├── waf-config.ts         # WAF rule definitions
+│   │   └── deserialization-patterns.ts
+│   ├── tracing/
+│   │   ├── tracing.ts            # Request tracing system
+│   │   ├── geolocation.ts        # Geolocation blocking
+│   │   └── ip-tracking.ts        # IP reputation tracking
+│   ├── types/
+│   │   └── index.ts              # TypeScript types
+│   └── utils/
+│       └── debug.ts              # Debug logging utilities
+├── experiments/
+│   ├── profiles/
+│   │   └── security-tests.ts     # Load test attack profiles
+│   └── load-test/
+│       └── index.ts              # Load testing framework
+├── wrangler.toml                 # Cloudflare configuration
+├── package.json                  # Dependencies
+├── tsconfig.json                 # TypeScript config
+└── README.md                     # This file
+```
 
-The project includes pre-configured rate limit profiles:
+## Security Features
 
-| Profile | Limit | Window | Use Case |
-|---------|-------|--------|----------|
-| STRICT  | 5     | 60s    | Login/auth endpoints (prevents brute force) |
-| NORMAL  | 100   | 60s    | General API endpoints |
-| RELAXED | 1000  | 60s    | Public/static content |
-| HOURLY  | 100   | 3600s  | Expensive operations |
-| DAILY   | 1000  | 86400s | Very expensive operations |
+### Rate Limiting
 
-### Implementation
+The rate limiter protects against brute force, DoS, DDoS, and web scraping attacks using a sliding window counter stored in Cloudflare KV.
 
-Rate limiting uses a sliding window counter stored in Cloudflare KV (or in-memory for mock mode):
+**Features:**
+- Multiple rate limit profiles (strict, normal, relaxed)
+- Burst detection with queuing and throttling
+- Session-aware rate limiting
+- Adaptive limits based on traffic patterns
 
+**Example:**
 ```typescript
-const rateLimiter = createRateLimiter(env);
-const key = getRateLimitKey(request, 'public');
+import { RateLimiter } from './rate-limiter/rate-limiter';
 
-const rateLimit = await rateLimiter.check({
-  key,
-  ...RATE_LIMIT_PROFILES.RELAXED,
+const rateLimiter = new RateLimiter(env.KV);
+const result = await rateLimiter.check({
+  key: `ip:${ip}`,
+  limit: 100,
+  window: 60, // 100 requests per minute
 });
 
-if (!rateLimit.allowed) {
-  // Return 429 Too Many Requests
+if (!result.allowed) {
+  return new Response('Rate limit exceeded', { status: 429 });
 }
 ```
 
-### Customizing Rate Limits
+### Bot Protection
 
-Edit `src/rate-limiter.ts` to add custom profiles or modify the key generation logic:
+The bot management system detects and mitigates automated attacks.
 
+**Features:**
+- **Credential Stuffing Detection**: Identifies rapid login attempts with different credentials
+- **Spam Detection**: Detects promotional content, excessive links, and automated posting
+- **Session Management**: Tracks user behavior across requests
+- **Traffic Classification**: Categorizes traffic as legitimate, suspicious, or malicious
+- **Turnstile Integration**: Cloudflare's bot protection service
+
+**Example:**
 ```typescript
-// Custom profile
-export const RATE_LIMIT_PROFILES = {
-  CUSTOM: { limit: 50, window: 120 }, // 50 requests per 2 minutes
-};
+import { BotProtectionManager } from './bot';
 
-// Custom key (e.g., by user ID instead of IP)
-export function getRateLimitKey(request: Request, prefix: string = 'ip'): string {
-  const userId = request.headers.get('X-User-ID');
-  if (userId) {
-    return `${prefix}:user:${userId}`;
-  }
-  // Fallback to IP
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  return `${prefix}:${ip}`;
+const botManager = new BotProtectionManager(env);
+const result = await botManager.analyzeRequest(request, sessionId);
+
+if (result.blocked) {
+  return new Response('Bot detected', { status: 403 });
 }
 ```
+
+### WAF Rules
+
+The Web Application Firewall protects against XSS and insecure deserialization attacks.
+
+**Features:**
+- **XSS Protection**: Detects script injection, event handlers, JavaScript protocols
+- **Deserialization Protection**: Blocks Java, Python, PHP, .NET, and YAML deserialization attacks
+- **POST Body Scanning**: Scans both query strings and POST body content
+- **Base64 Decoding**: Automatically decodes and scans base64-encoded payloads
+
+**XSS Patterns Detected:**
+- `<script>` tags
+- Event handlers (`onerror=`, `onload=`, etc.)
+- JavaScript protocol (`javascript:`, `vbscript:`)
+- Data URIs (`data:text/html`)
+- SVG/iframe injection
+
+**Deserialization Patterns Detected:**
+- Java serialization magic bytes (`rO0ABXNy...`)
+- Python pickle exploits (`cos\nsystem\n`)
+- PHP serialized objects (`O:8:"stdClass"`)
+- .NET TypeNameHandling vulnerabilities
+- YAML code execution (`!!python/object/apply`)
+
+**Example:**
+```typescript
+import { checkWAF } from './rules/waf';
+
+const wafResult = await checkWAF(request, traceId);
+if (wafResult.blocked) {
+  return createWAFBlockResponse(wafResult);
+}
+```
+
+### Geolocation Blocking
+
+Block or challenge requests from specific countries or regions.
+
+**Configuration:**
+```typescript
+import { GeolocationBlocker } from './tracing/geolocation';
+
+const geoBlocker = new GeolocationBlocker({
+  blockedCountries: ['ZZ', 'XX', 'YY'], // Fake test countries
+  challengedCountries: ['QQ', 'WW'],
+  defaultAction: 'allow',
+});
+```
+
+**Fake Test Countries (for load testing):**
+- `ZZ`: Fakeland (blocked)
+- `XX`: Testonia (blocked)
+- `YY`: Malwaristan (blocked)
+- `QQ`: Suspectia (challenged)
+- `WW`: Botlandia (challenged)
+
+### IP Tracking
+
+Track IP reputation and automatically block low-reputation IPs.
+
+**Features:**
+- IP reputation scoring
+- Auto-blocking for low-reputation IPs
+- Request history tracking
+- Violation counting
+
+## Load Testing
+
+The project includes a comprehensive load testing framework with 6 attack profiles.
+
+### Running Load Tests
+
+```bash
+# Run a specific test profile
+npm run load-test -- -p RULES_FOLDER_TEST -v
+
+# Available profiles:
+# - BOT_FOLDER_TEST: Tests bot detection
+# - RATE_LIMITER_TEST: Tests rate limiting
+# - RULES_FOLDER_TEST: Tests WAF rules
+# - TRACING_FOLDER_TEST: Tests geolocation and IP tracking
+# - CORE_LEGITIMATE_TRAFFIC: Tests legitimate traffic handling
+# - CORE_MIXED_TRAFFIC: Tests mixed legitimate + attack traffic
+```
+
+### Test Profiles
+
+| Profile | Description | Expected Block Rate |
+|---------|-------------|---------------------|
+| `BOT_FOLDER_TEST` | Credential stuffing, spam, bot user agents | 50-70% |
+| `RATE_LIMITER_TEST` | Burst attacks, brute force, web scraping | 60-80% |
+| `RULES_FOLDER_TEST` | XSS and deserialization attacks | 80-95% |
+| `TRACING_FOLDER_TEST` | Geolocation blocking, IP tracking | 15-25% |
+| `CORE_LEGITIMATE_TRAFFIC` | Real user traffic from legitimate countries | 0-10% |
+| `CORE_MIXED_TRAFFIC` | 60% legitimate + 40% attack traffic | 30-50% |
 
 ## Turnstile Integration
 
@@ -251,53 +390,6 @@ In development, Turnstile is automatically mocked:
 - Any token passes verification
 - Use token "fail" or "invalid" to test failure cases
 
-## WAF Rules
-
-The project includes simulated WAF rules that block common attack patterns:
-
-### Built-in Rules
-
-1. **SQL Injection**: Blocks patterns like `union select`, `drop table`, `' or '1'='1'`
-2. **XSS**: Blocks `<script>`, `javascript:`, `onerror=`
-3. **Path Traversal**: Blocks `../` and `..\`
-4. **Suspicious User Agents**: Challenges requests with bot-like user agents
-5. **Admin Protection**: Blocks unauthenticated access to `/admin` paths
-
-### Testing WAF Rules
-
-```bash
-# SQL injection attempt (blocked)
-curl "http://localhost:8787/api/public?id=1%20union%20select"
-
-# XSS attempt (blocked)
-curl "http://localhost:8787/api/public?q=%3Cscript%3E"
-
-# Path traversal (blocked)
-curl "http://localhost:8787/../etc/passwd"
-```
-
-### Adding Custom Rules
-
-Edit `src/waf.ts`:
-
-```typescript
-const WAF_RULES: WAFRule[] = [
-  {
-    id: 'custom-rule',
-    description: 'Block specific pattern',
-    action: 'block',
-    conditions: [
-      {
-        field: 'path',
-        operator: 'contains',
-        value: '/forbidden',
-      },
-    ],
-  },
-  // ... existing rules
-];
-```
-
 ## Request Tracing
 
 Every request gets a unique trace ID for debugging and monitoring.
@@ -308,6 +400,7 @@ Response includes these headers:
 - `X-Trace-ID`: Unique identifier for this request
 - `X-Request-Timestamp`: When the request was processed
 - `X-CF-Ray`: Cloudflare Ray ID (in production)
+- `Server-Timing`: Performance timing breakdown
 
 ### Trace Information
 
@@ -320,29 +413,14 @@ Response includes these headers:
     "url": "/api/public",
     "ip": "203.0.113.1",
     "country": "US",
-    "rayId": "7d9e8f7e6d5c4b3a"
+    "performance": {
+      "totalTime": 45.2,
+      "wafCheckTime": 2.1,
+      "rateLimitTime": 1.5
+    }
   }
 }
 ```
-
-### Logging
-
-All requests are logged with trace information:
-
-```javascript
-console.log('[TRACE]', JSON.stringify({
-  traceId: "550e8400-e29b-41d4-a716-446655440000",
-  timestamp: 1234567890,
-  method: "GET",
-  url: "/api/public",
-  environment: "development"
-}));
-```
-
-In production, connect this to:
-- Cloudflare Logpush
-- Workers Analytics Engine
-- External logging services (Datadog, Splunk, etc.)
 
 ## Production Deployment
 
@@ -381,43 +459,25 @@ npm run deploy
 curl https://workers-security-example.YOUR-SUBDOMAIN.workers.dev/api/status
 ```
 
-## Project Structure
-
-```
-example-1-workers-security/
-├── src/
-│   ├── index.ts           # Main worker entry point
-│   ├── rate-limiter.ts    # Rate limiting logic
-│   ├── turnstile.ts       # Turnstile verification
-│   ├── tracing.ts         # Request tracing system
-│   ├── waf.ts            # WAF rule simulation
-│   └── types/
-│       └── index.ts       # TypeScript types
-├── wrangler.toml          # Cloudflare configuration
-├── package.json           # Dependencies
-├── tsconfig.json          # TypeScript config
-└── README.md             # This file
-```
-
 ## Key Learnings & Insights
 
-### 1. Unified Trace IDs
-Implementing trace IDs across all requests makes debugging significantly easier. When a user reports an issue, you can search logs by trace ID to see the complete request flow.
+### 1. Defense in Depth
+Combining multiple security layers (WAF + rate limiting + bot protection + geolocation) provides better protection than any single mechanism alone.
 
-### 2. Rate Limiting Strategy
-Different endpoints need different rate limits:
-- Auth endpoints: Very strict (5/min) to prevent brute force
-- API endpoints: Moderate (100/min) for normal usage
-- Public content: Relaxed (1000/min) to avoid false positives
+### 2. POST Body Scanning
+WAF rules must scan both query strings AND POST body content. Many attacks (especially deserialization) occur in POST bodies.
 
-### 3. Mock Development
-Being able to develop and test locally without Cloudflare credentials dramatically improves developer experience. The mock implementations should match production behavior as closely as possible.
+### 3. Session-Aware Security
+Tracking user sessions enables behavioral analysis and more sophisticated bot detection.
 
-### 4. Defense in Depth
-Combining multiple security layers (WAF + rate limiting + bot protection) provides better protection than any single mechanism alone.
+### 4. IP Reputation
+Auto-blocking low-reputation IPs provides an additional layer of protection against known bad actors.
 
-### 5. Fail Open vs Fail Closed
-For rate limiting, we "fail open" (allow requests) if KV is unavailable to prevent service disruptions. For security-critical features like Turnstile, consider whether to "fail closed" (block requests).
+### 5. Geolocation Blocking
+Blocking high-threat countries/regions can significantly reduce attack traffic, but must be balanced against legitimate users.
+
+### 6. Load Testing
+Comprehensive load testing with realistic attack profiles is essential for validating security measures.
 
 ## Troubleshooting
 
@@ -431,22 +491,19 @@ For rate limiting, we "fail open" (allow requests) if KV is unavailable to preve
 - Check that `TURNSTILE_ENABLED` is "true"
 - Ensure client is sending token in correct header/field
 
-### WAF not blocking
-- Check that patterns match exactly (case-insensitive)
-- Verify URL encoding in test requests
-- Review WAF rules in `src/waf.ts`
+### WAF not blocking POST body attacks
+- Ensure `checkWAF()` is called with `await` (it's async)
+- Verify POST body content is being read correctly
+- Check WAF rules include patterns for your attack vectors
 
-## Next Steps
-
-- Add D1 database for persistent rate limit storage
-- Implement more sophisticated bot detection
-- Add metrics and monitoring dashboards
-- Create admin API for managing rules
-- Add request replay protection
-- Implement geographic restrictions
+### All requests blocked in load tests
+- Verify test traffic uses unique IP addresses per request
+- Check that fake test countries (ZZ, XX, YY) are configured correctly
+- Ensure legitimate traffic uses real country codes (US, CA, GB, etc.)
 
 ## Resources
 
 - [Cloudflare Workers Docs](https://developers.cloudflare.com/workers/)
 - [Turnstile Docs](https://developers.cloudflare.com/turnstile/)
 - [Workers KV Docs](https://developers.cloudflare.com/kv/)
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)

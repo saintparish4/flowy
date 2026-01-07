@@ -1,0 +1,224 @@
+================================================================================
+EXPERIMENT REPORT
+================================================================================
+
+Experiment Information
+--------------------------------------------------------------------------------
+Experiment ID:    exp-1767795555600-u8pjla1
+Profile:          Core Mixed Traffic
+Start Time:       2026-01-07T14:19:15.600Z
+End Time:         2026-01-07T14:20:00.630Z
+Duration:         45.03s
+
+Summary Statistics
+--------------------------------------------------------------------------------
+Total Requests:        5,266
+Successful:            2,057
+Failed:                3,209
+Blocked:               3,209
+Rate Limited:          0
+WAF Blocked:           0
+
+Request Rate:          116.94 req/s
+Block Rate:            60.94%
+Error Rate:            60.94%
+
+Latency Statistics (ms)
+--------------------------------------------------------------------------------
+Min:                  3.00
+Max:                  299.00
+Mean:                 61.42
+Median:               55.00
+P50:                  55.00
+P95:                  140.00
+P99:                  196.00
+P99.9:                248.00
+Std Dev:              41.21
+
+Security Check Latency (ms)
+--------------------------------------------------------------------------------
+
+HTTP Status Code Distribution
+--------------------------------------------------------------------------------
+  200:      2,057 (39.06%)
+  403:      3,209 (60.94%)
+
+Performance vs Expectations
+--------------------------------------------------------------------------------
+Status:              ✗ FAILED
+
+Block Rate:
+  Expected:          35.00%
+  Actual:            60.94%
+  Difference:        25.94%
+
+Latency:
+  Expected:          150.00ms
+  Actual:            61.42ms
+  Difference:        -88.58ms
+
+Time Series Summary (10s intervals)
+--------------------------------------------------------------------------------
+Interval | Requests | Rate (req/s) | Block % | Error % | P95 (ms)
+--------------------------------------------------------------------------------
+  0- 10s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 10- 20s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 20- 30s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 30- 40s  |      534 |        53.40 |   61.80 |   61.80 |      134
+
+================================================================================
+JSON DATA
+================================================================================
+{
+  "experimentId": "exp-1767795555600-u8pjla1",
+  "profileName": "Core Mixed Traffic",
+  "startTime": 1767795555600,
+  "endTime": 1767795600630,
+  "duration": 45.03,
+  "summary": {
+    "timestamp": 1767795600630,
+    "windowSize": 0,
+    "totalRequests": 5266,
+    "successfulRequests": 2057,
+    "failedRequests": 3209,
+    "blockedRequests": 3209,
+    "rateLimitedRequests": 0,
+    "wafBlockedRequests": 0,
+    "requestRate": 116.9442593826338,
+    "errorRate": 60.93809342954805,
+    "blockRate": 60.93809342954805,
+    "latency": {
+      "min": 3,
+      "max": 299,
+      "mean": 61.41815419673377,
+      "median": 55,
+      "p50": 55,
+      "p95": 140,
+      "p99": 196,
+      "p999": 248,
+      "stdDev": 41.20685828664259
+    },
+    "securityLatency": {},
+    "statusCodes": {
+      "200": 2057,
+      "403": 3209
+    }
+  },
+  "timeSeries": [
+    {
+      "timestamp": 1767795600639,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795600639,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795600639,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795600639,
+      "windowSize": 10,
+      "totalRequests": 534,
+      "successfulRequests": 204,
+      "failedRequests": 330,
+      "blockedRequests": 330,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 53.4,
+      "errorRate": 61.79775280898876,
+      "blockRate": 61.79775280898876,
+      "latency": {
+        "min": 3,
+        "max": 238,
+        "mean": 65.23220973782772,
+        "median": 62,
+        "p50": 62,
+        "p95": 134,
+        "p99": 201,
+        "p999": 238,
+        "stdDev": 38.706550026671806
+      },
+      "securityLatency": {},
+      "statusCodes": {
+        "200": 204,
+        "403": 330
+      }
+    }
+  ],
+  "errors": [],
+  "comparison": {
+    "expectedBlockRate": 35,
+    "actualBlockRate": 60.93809342954805,
+    "expectedLatency": 150,
+    "actualLatency": 61.41815419673377,
+    "passed": false
+  }
+}

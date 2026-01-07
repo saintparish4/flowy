@@ -1,0 +1,197 @@
+================================================================================
+EXPERIMENT REPORT
+================================================================================
+
+Experiment Information
+--------------------------------------------------------------------------------
+Experiment ID:    exp-1767794445260-1200wdg
+Profile:          Rate Limiter Test
+Start Time:       2026-01-07T14:00:45.260Z
+End Time:         2026-01-07T14:01:15.721Z
+Duration:         30.46s
+
+Summary Statistics
+--------------------------------------------------------------------------------
+Total Requests:        3,953
+Successful:            1,620
+Failed:                2,333
+Blocked:               2,333
+Rate Limited:          0
+WAF Blocked:           0
+
+Request Rate:          129.77 req/s
+Block Rate:            59.02%
+Error Rate:            59.02%
+
+Latency Statistics (ms)
+--------------------------------------------------------------------------------
+Min:                  22.00
+Max:                  1934.00
+Mean:                 157.58
+Median:               144.00
+P50:                  144.00
+P95:                  236.00
+P99:                  435.00
+P99.9:                1689.00
+Std Dev:              103.84
+
+Security Check Latency (ms)
+--------------------------------------------------------------------------------
+
+HTTP Status Code Distribution
+--------------------------------------------------------------------------------
+  200:      1,620 (40.98%)
+  403:      2,333 (59.02%)
+
+Performance vs Expectations
+--------------------------------------------------------------------------------
+Status:              ✓ PASSED
+
+Block Rate:
+  Expected:          60.00%
+  Actual:            59.02%
+  Difference:        -0.98%
+
+Latency:
+  Expected:          150.00ms
+  Actual:            157.58ms
+  Difference:        7.58ms
+
+Time Series Summary (10s intervals)
+--------------------------------------------------------------------------------
+Interval | Requests | Rate (req/s) | Block % | Error % | P95 (ms)
+--------------------------------------------------------------------------------
+  0- 10s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 10- 20s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 20- 30s  |     1295 |       129.50 |   61.93 |   61.93 |      224
+
+================================================================================
+JSON DATA
+================================================================================
+{
+  "experimentId": "exp-1767794445260-1200wdg",
+  "profileName": "Rate Limiter Test",
+  "startTime": 1767794445260,
+  "endTime": 1767794475721,
+  "duration": 30.461,
+  "summary": {
+    "timestamp": 1767794475721,
+    "windowSize": 0,
+    "totalRequests": 3953,
+    "successfulRequests": 1620,
+    "failedRequests": 2333,
+    "blockedRequests": 2333,
+    "rateLimitedRequests": 0,
+    "wafBlockedRequests": 0,
+    "requestRate": 129.77249597846426,
+    "errorRate": 59.01846698709841,
+    "blockRate": 59.01846698709841,
+    "latency": {
+      "min": 22,
+      "max": 1934,
+      "mean": 157.5775360485707,
+      "median": 144,
+      "p50": 144,
+      "p95": 236,
+      "p99": 435,
+      "p999": 1689,
+      "stdDev": 103.8388588020822
+    },
+    "securityLatency": {},
+    "statusCodes": {
+      "200": 1620,
+      "403": 2333
+    }
+  },
+  "timeSeries": [
+    {
+      "timestamp": 1767794475728,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767794475728,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767794475728,
+      "windowSize": 10,
+      "totalRequests": 1295,
+      "successfulRequests": 493,
+      "failedRequests": 802,
+      "blockedRequests": 802,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 129.5,
+      "errorRate": 61.93050193050193,
+      "blockRate": 61.93050193050193,
+      "latency": {
+        "min": 25,
+        "max": 466,
+        "mean": 149.50733590733591,
+        "median": 144,
+        "p50": 144,
+        "p95": 224,
+        "p99": 420,
+        "p999": 463,
+        "stdDev": 51.64132074182963
+      },
+      "securityLatency": {},
+      "statusCodes": {
+        "200": 493,
+        "403": 802
+      }
+    }
+  ],
+  "errors": [],
+  "comparison": {
+    "expectedBlockRate": 60,
+    "actualBlockRate": 59.01846698709841,
+    "expectedLatency": 150,
+    "actualLatency": 157.5775360485707,
+    "passed": true
+  }
+}

@@ -1,4 +1,4 @@
-import type { Env, TurnstileVerifyResponse } from "./types";
+import type { Env, TurnstileVerifyResponse } from "../types";
 
 // Verify Cloudflare Turnstile token
 // https://developers.cloudflare.com/turnstile/get-started/server-side-validation/

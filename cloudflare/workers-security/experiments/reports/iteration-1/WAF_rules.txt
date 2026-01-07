@@ -1,0 +1,224 @@
+================================================================================
+EXPERIMENT REPORT
+================================================================================
+
+Experiment Information
+--------------------------------------------------------------------------------
+Experiment ID:    exp-1767795015218-dt56bm7
+Profile:          Rules Folder Test
+Start Time:       2026-01-07T14:10:15.218Z
+End Time:         2026-01-07T14:11:00.384Z
+Duration:         45.17s
+
+Summary Statistics
+--------------------------------------------------------------------------------
+Total Requests:        6,497
+Successful:            2,171
+Failed:                4,326
+Blocked:               4,326
+Rate Limited:          0
+WAF Blocked:           0
+
+Request Rate:          143.85 req/s
+Block Rate:            66.58%
+Error Rate:            66.58%
+
+Latency Statistics (ms)
+--------------------------------------------------------------------------------
+Min:                  3.00
+Max:                  400.00
+Mean:                 70.04
+Median:               54.00
+P50:                  54.00
+P95:                  178.00
+P99:                  223.00
+P99.9:                300.00
+Std Dev:              56.54
+
+Security Check Latency (ms)
+--------------------------------------------------------------------------------
+
+HTTP Status Code Distribution
+--------------------------------------------------------------------------------
+  200:      2,171 (33.42%)
+  403:      4,326 (66.58%)
+
+Performance vs Expectations
+--------------------------------------------------------------------------------
+Status:              ✗ FAILED
+
+Block Rate:
+  Expected:          80.00%
+  Actual:            66.58%
+  Difference:        -13.42%
+
+Latency:
+  Expected:          100.00ms
+  Actual:            70.04ms
+  Difference:        -29.96ms
+
+Time Series Summary (10s intervals)
+--------------------------------------------------------------------------------
+Interval | Requests | Rate (req/s) | Block % | Error % | P95 (ms)
+--------------------------------------------------------------------------------
+  0- 10s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 10- 20s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 20- 30s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 30- 40s  |      636 |        63.60 |   63.52 |   63.52 |      181
+
+================================================================================
+JSON DATA
+================================================================================
+{
+  "experimentId": "exp-1767795015218-dt56bm7",
+  "profileName": "Rules Folder Test",
+  "startTime": 1767795015218,
+  "endTime": 1767795060384,
+  "duration": 45.166,
+  "summary": {
+    "timestamp": 1767795060384,
+    "windowSize": 0,
+    "totalRequests": 6497,
+    "successfulRequests": 2171,
+    "failedRequests": 4326,
+    "blockedRequests": 4326,
+    "rateLimitedRequests": 0,
+    "wafBlockedRequests": 0,
+    "requestRate": 143.8471416552274,
+    "errorRate": 66.58457749730646,
+    "blockRate": 66.58457749730646,
+    "latency": {
+      "min": 3,
+      "max": 400,
+      "mean": 70.0384792981376,
+      "median": 54,
+      "p50": 54,
+      "p95": 178,
+      "p99": 223,
+      "p999": 300,
+      "stdDev": 56.541986263180945
+    },
+    "securityLatency": {},
+    "statusCodes": {
+      "200": 2171,
+      "403": 4326
+    }
+  },
+  "timeSeries": [
+    {
+      "timestamp": 1767795060393,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795060394,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795060394,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767795060394,
+      "windowSize": 10,
+      "totalRequests": 636,
+      "successfulRequests": 232,
+      "failedRequests": 404,
+      "blockedRequests": 404,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 63.6,
+      "errorRate": 63.52201257861635,
+      "blockRate": 63.52201257861635,
+      "latency": {
+        "min": 4,
+        "max": 219,
+        "mean": 73.90408805031447,
+        "median": 59,
+        "p50": 59,
+        "p95": 181,
+        "p99": 213,
+        "p999": 219,
+        "stdDev": 54.96186713198305
+      },
+      "securityLatency": {},
+      "statusCodes": {
+        "200": 232,
+        "403": 404
+      }
+    }
+  ],
+  "errors": [],
+  "comparison": {
+    "expectedBlockRate": 80,
+    "actualBlockRate": 66.58457749730646,
+    "expectedLatency": 100,
+    "actualLatency": 70.0384792981376,
+    "passed": false
+  }
+}
