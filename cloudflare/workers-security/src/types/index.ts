@@ -7,6 +7,10 @@ export interface Env {
   TURNSTILE_SECRET_KEY?: string;
   ENVIRONMENT: string;
   TURNSTILE_ENABLED: string;
+  // Debug settings
+  DEBUG_MODE?: string;      // "true" to enable debug logging
+  DEBUG_LEVEL?: string;     // "error" | "warn" | "info" | "debug" | "trace"
+  DEBUG_CONSOLE?: string;   // "false" to disable console output
 }
 
 // Request tracing
@@ -26,6 +30,7 @@ export interface PerformanceMetrics {
   endTime?: number;
   duration?: number;
   rateLimitCheckTime?: number;
+  burstCheckTime?: number;
   turnstileCheckTime?: number;
   wafCheckTime?: number;
   handlerTime?: number;
@@ -44,6 +49,7 @@ export interface ExperimentContext {
 
 // Enhanced trace info
 export interface EnhancedTraceInfo extends TraceInfo {
+  requestTimestamp: number; // Request arrival time (captured at entry point)
   performance: PerformanceMetrics;
   experiment?: ExperimentContext;
 }

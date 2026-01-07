@@ -1,0 +1,277 @@
+================================================================================
+EXPERIMENT REPORT
+================================================================================
+
+Experiment Information
+--------------------------------------------------------------------------------
+Experiment ID:    exp-1767744232857-zsmdrfj
+Profile:          Credential Stuffing
+Start Time:       2026-01-07T00:03:52.857Z
+End Time:         2026-01-07T00:04:53.035Z
+Duration:         60.18s
+
+Summary Statistics
+--------------------------------------------------------------------------------
+Total Requests:        6,245
+Successful:            93
+Failed:                6,152
+Blocked:               6,152
+Rate Limited:          6,152
+WAF Blocked:           0
+
+Request Rate:          103.78 req/s
+Block Rate:            98.51%
+Error Rate:            98.51%
+
+Latency Statistics (ms)
+--------------------------------------------------------------------------------
+Min:                  9.00
+Max:                  884.00
+Mean:                 151.31
+Median:               147.00
+P50:                  147.00
+P95:                  221.00
+P99:                  320.00
+P99.9:                883.00
+Std Dev:              58.79
+
+Security Check Latency (ms)
+--------------------------------------------------------------------------------
+
+HTTP Status Code Distribution
+--------------------------------------------------------------------------------
+  200:         93 (1.49%)
+  429:      6,152 (98.51%)
+
+Performance vs Expectations
+--------------------------------------------------------------------------------
+Status:              ✗ FAILED
+
+Block Rate:
+  Expected:          85.00%
+  Actual:            98.51%
+  Difference:        13.51%
+
+Latency:
+  Expected:          50.00ms
+  Actual:            151.31ms
+  Difference:        101.31ms
+
+Time Series Summary (10s intervals)
+--------------------------------------------------------------------------------
+Interval | Requests | Rate (req/s) | Block % | Error % | P95 (ms)
+--------------------------------------------------------------------------------
+  0- 10s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 10- 20s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 20- 30s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 30- 40s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 40- 50s  |        0 |         0.00 |    0.00 |    0.00 |        0
+ 50- 60s  |      929 |        92.90 |  100.00 |  100.00 |      252
+
+================================================================================
+JSON DATA
+================================================================================
+{
+  "experimentId": "exp-1767744232857-zsmdrfj",
+  "profileName": "Credential Stuffing",
+  "startTime": 1767744232857,
+  "endTime": 1767744293035,
+  "duration": 60.178,
+  "summary": {
+    "timestamp": 1767744293035,
+    "windowSize": 0,
+    "totalRequests": 6245,
+    "successfulRequests": 93,
+    "failedRequests": 6152,
+    "blockedRequests": 6152,
+    "rateLimitedRequests": 6152,
+    "wafBlockedRequests": 0,
+    "requestRate": 103.77546611718569,
+    "errorRate": 98.51080864691754,
+    "blockRate": 98.51080864691754,
+    "latency": {
+      "min": 9,
+      "max": 884,
+      "mean": 151.311289031225,
+      "median": 147,
+      "p50": 147,
+      "p95": 221,
+      "p99": 320,
+      "p999": 883,
+      "stdDev": 58.78523266538435
+    },
+    "securityLatency": {},
+    "statusCodes": {
+      "200": 93,
+      "429": 6152
+    }
+  },
+  "timeSeries": [
+    {
+      "timestamp": 1767744293046,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767744293046,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767744293047,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767744293047,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767744293047,
+      "windowSize": 10,
+      "totalRequests": 0,
+      "successfulRequests": 0,
+      "failedRequests": 0,
+      "blockedRequests": 0,
+      "rateLimitedRequests": 0,
+      "wafBlockedRequests": 0,
+      "requestRate": 0,
+      "errorRate": 0,
+      "blockRate": 0,
+      "latency": {
+        "min": 0,
+        "max": 0,
+        "mean": 0,
+        "median": 0,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "p999": 0,
+        "stdDev": 0
+      },
+      "securityLatency": {},
+      "statusCodes": {}
+    },
+    {
+      "timestamp": 1767744293047,
+      "windowSize": 10,
+      "totalRequests": 929,
+      "successfulRequests": 0,
+      "failedRequests": 929,
+      "blockedRequests": 929,
+      "rateLimitedRequests": 929,
+      "wafBlockedRequests": 0,
+      "requestRate": 92.9,
+      "errorRate": 100,
+      "blockRate": 100,
+      "latency": {
+        "min": 9,
+        "max": 394,
+        "mean": 170.65662002152854,
+        "median": 162,
+        "p50": 162,
+        "p95": 252,
+        "p99": 389,
+        "p999": 394,
+        "stdDev": 47.26007859530164
+      },
+      "securityLatency": {},
+      "statusCodes": {
+        "429": 929
+      }
+    }
+  ],
+  "errors": [],
+  "comparison": {
+    "expectedBlockRate": 85,
+    "actualBlockRate": 98.51080864691754,
+    "expectedLatency": 50,
+    "actualLatency": 151.311289031225,
+    "passed": false
+  }
+}

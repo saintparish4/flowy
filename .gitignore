@@ -12,3 +12,6 @@ worker/
 node_modules/
 pnpm-lock.yaml
 pnpm-workspace.yaml
+docs/
+CLAUDE.md
+.claude/

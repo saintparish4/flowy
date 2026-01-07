@@ -181,6 +181,7 @@ export class EnhancedLoadTester {
         if (data?.trace?.performance) {
           securityTiming = {
             rateLimit: data.trace.performance.rateLimitCheckTime,
+            burst: data.trace.performance.burstCheckTime,
             turnstile: data.trace.performance.turnstileCheckTime,
             waf: data.trace.performance.wafCheckTime,
           };

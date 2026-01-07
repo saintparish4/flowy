@@ -16,6 +16,7 @@ export interface LoadTestConfig {
   experimentId?: string;
   verbose?: boolean;
   realtime?: boolean; // Show realtime metrics
+  debug?: boolean;    // Enable debug mode for detailed WAF/latency logging
 }
 
 export interface RequestGenerator {
@@ -28,10 +29,33 @@ interface ResponseData {
   trace?: {
     performance?: {
       rateLimitCheckTime?: number;
+      burstCheckTime?: number;
       turnstileCheckTime?: number;
       wafCheckTime?: number;
     };
   };
+  __debug?: {
+    timing?: Record<string, number>;
+    entries?: Array<{
+      level: string;
+      category: string;
+      message: string;
+    }>;
+  };
+}
+
+// Debug log storage for analysis
+export interface DebugRequestLog {
+  timestamp: number;
+  url: string;
+  method: string;
+  statusCode: number;
+  wafBlocked: boolean;
+  serverTiming?: Record<string, number>;
+  debugEntries?: number;
+  traceId?: string;
+  wafRule?: string;
+  debugData?: ResponseData['__debug'];
 }
 
 /**
@@ -43,6 +67,7 @@ export class LoadTester {
   private experimentId: string;
   private running: boolean = false;
   private abortController?: AbortController;
+  private debugLogs: DebugRequestLog[] = [];
 
   constructor(config: LoadTestConfig) {
     this.config = config;
@@ -109,6 +134,23 @@ export class LoadTester {
   }
 
   /**
+   * Parse Server-Timing header
+   */
+  private parseServerTiming(header: string | null): Record<string, number> | undefined {
+    if (!header) return undefined;
+    
+    const timings: Record<string, number> = {};
+    header.split(',').forEach(entry => {
+      const match = entry.trim().match(/^([^;]+);dur=(\d+(?:\.\d+)?)/);
+      if (match) {
+        timings[match[1]] = parseFloat(match[2]);
+      }
+    });
+    
+    return Object.keys(timings).length > 0 ? timings : undefined;
+  }
+
+  /**
    * Execute a single request
    */
   private async executeRequest(generator: RequestGenerator): Promise<void> {
@@ -124,6 +166,11 @@ export class LoadTester {
         "X-Test-Traffic": "true",
         ...(request.headers || {}),
       };
+
+      // Enable debug mode if configured
+      if (this.config.debug) {
+        headers["X-Debug-Mode"] = "true";
+      }
 
       // Add Turnstile token if required
       if (request.turnstileToken) {
@@ -150,6 +197,10 @@ export class LoadTester {
       let rateLimited = false;
       let wafBlocked = false;
       let securityTiming: RequestMetric["securityTiming"] = {};
+      let debugData: ResponseData['__debug'] | undefined;
+
+      // Extract debug timing from Server-Timing header
+      const serverTiming = this.parseServerTiming(response.headers.get('Server-Timing'));
 
       try {
         const data = (await response.json()) as ResponseData;
@@ -163,9 +214,15 @@ export class LoadTester {
         if (data.trace?.performance) {
           securityTiming = {
             rateLimit: data.trace.performance.rateLimitCheckTime,
+            burst: data.trace.performance.burstCheckTime,
             turnstile: data.trace.performance.turnstileCheckTime,
             waf: data.trace.performance.wafCheckTime,
           };
+        }
+
+        // Extract debug data if available
+        if (data.__debug) {
+          debugData = data.__debug;
         }
       } catch {
         // Response wasn't JSON or couldn't be parsed
@@ -189,10 +246,31 @@ export class LoadTester {
 
       this.metrics.record(metric);
 
+      // Store debug log if debug mode is enabled
+      if (this.config.debug) {
+        const debugLog: DebugRequestLog = {
+          timestamp: startTime,
+          url: request.path,
+          method: request.method,
+          statusCode: response.status,
+          wafBlocked,
+          serverTiming,
+          debugEntries: parseInt(response.headers.get('X-Debug-Entries') || '0'),
+          traceId: response.headers.get("X-Trace-ID") || undefined,
+          wafRule: response.headers.get("X-WAF-Rule") || undefined,
+          debugData,
+        };
+        this.debugLogs.push(debugLog);
+      }
+
       if (this.config.verbose) {
         const status = blocked ? "🚫" : response.ok ? "✓" : "✗";
+        const wafInfo = wafBlocked ? ` [WAF:${response.headers.get("X-WAF-Rule")}]` : '';
+        const serverTimingInfo = serverTiming 
+          ? ` [ST: ${Object.entries(serverTiming).map(([k, v]) => `${k}=${v.toFixed(1)}ms`).join(', ')}]` 
+          : '';
         console.log(
-          `${status} ${request.method} ${request.path} - ${response.status} (${latency}ms)`
+          `${status} ${request.method} ${request.path} - ${response.status} (${latency}ms)${wafInfo}${serverTimingInfo}`
         );
       }
     } catch (error: any) {
@@ -273,11 +351,13 @@ export class LoadTester {
     );
     console.log(`   Concurrency: ${this.config.profile.concurrency}`);
     console.log(
-      `   Distribution: ${this.config.profile.pattern.distribution}\n`
+      `   Distribution: ${this.config.profile.pattern.distribution}`
     );
+    console.log(`   Debug Mode: ${this.config.debug ? 'ENABLED' : 'disabled'}\n`);
 
     this.running = true;
     this.abortController = new AbortController();
+    this.debugLogs = [];
 
     const generator: RequestGenerator = {
       profile: this.config.profile,
@@ -323,6 +403,241 @@ export class LoadTester {
    */
   getMetrics(): MetricsCollector {
     return this.metrics;
+  }
+
+  /**
+   * Get debug logs
+   */
+  getDebugLogs(): DebugRequestLog[] {
+    return this.debugLogs;
+  }
+
+  /**
+   * Generate WAF debug analysis
+   */
+  generateWAFDebugReport(): string {
+    const lines: string[] = [
+      '═'.repeat(80),
+      'WAF DEBUG ANALYSIS REPORT',
+      '═'.repeat(80),
+      '',
+    ];
+
+    // Group by URL
+    const byUrl = new Map<string, DebugRequestLog[]>();
+    this.debugLogs.forEach(log => {
+      if (!byUrl.has(log.url)) {
+        byUrl.set(log.url, []);
+      }
+      byUrl.get(log.url)!.push(log);
+    });
+
+    lines.push(`Total requests logged: ${this.debugLogs.length}`);
+    lines.push(`Unique URLs: ${byUrl.size}`);
+    lines.push('');
+
+    // WAF block summary
+    const wafBlocked = this.debugLogs.filter(l => l.wafBlocked);
+    const wafAllowed = this.debugLogs.filter(l => !l.wafBlocked);
+    
+    lines.push('┌─ WAF Block Summary ──────────────────────────────────────────────────────┐');
+    lines.push(`│ WAF Blocked: ${wafBlocked.length} (${(wafBlocked.length / this.debugLogs.length * 100).toFixed(1)}%)`.padEnd(75) + '│');
+    lines.push(`│ WAF Allowed: ${wafAllowed.length} (${(wafAllowed.length / this.debugLogs.length * 100).toFixed(1)}%)`.padEnd(75) + '│');
+    lines.push('└──────────────────────────────────────────────────────────────────────────┘');
+    lines.push('');
+
+    // URL breakdown
+    lines.push('┌─ URL Breakdown ──────────────────────────────────────────────────────────┐');
+    byUrl.forEach((logs, url) => {
+      const blocked = logs.filter(l => l.wafBlocked).length;
+      const total = logs.length;
+      const blockRate = (blocked / total * 100).toFixed(1);
+      lines.push(`│ ${url.padEnd(40)} ${total.toString().padStart(5)} reqs, ${blocked.toString().padStart(4)} blocked (${blockRate}%)`.padEnd(75) + '│');
+    });
+    lines.push('└──────────────────────────────────────────────────────────────────────────┘');
+    lines.push('');
+
+    // WAF rule breakdown
+    const byRule = new Map<string, number>();
+    wafBlocked.forEach(log => {
+      const rule = log.wafRule || 'unknown';
+      byRule.set(rule, (byRule.get(rule) || 0) + 1);
+    });
+
+    if (byRule.size > 0) {
+      lines.push('┌─ WAF Rule Breakdown ─────────────────────────────────────────────────────┐');
+      Array.from(byRule.entries())
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([rule, count]) => {
+          lines.push(`│ ${rule.padEnd(30)} ${count.toString().padStart(5)} blocks`.padEnd(75) + '│');
+        });
+      lines.push('└──────────────────────────────────────────────────────────────────────────┘');
+    } else {
+      lines.push('┌─ WAF Rule Breakdown ─────────────────────────────────────────────────────┐');
+      lines.push('│ No WAF blocks recorded'.padEnd(75) + '│');
+      lines.push('└──────────────────────────────────────────────────────────────────────────┘');
+    }
+    lines.push('');
+
+    // Latency breakdown from server timing
+    const timingLogs = this.debugLogs.filter(l => l.serverTiming);
+    if (timingLogs.length > 0) {
+      lines.push('┌─ Server Timing Analysis (from X-Debug-Mode) ─────────────────────────────┐');
+      
+      const timingKeys = new Set<string>();
+      timingLogs.forEach(l => Object.keys(l.serverTiming!).forEach(k => timingKeys.add(k)));
+      
+      timingKeys.forEach(key => {
+        const values = timingLogs
+          .map(l => l.serverTiming![key])
+          .filter(v => v !== undefined);
+        
+        if (values.length > 0) {
+          const avg = values.reduce((a, b) => a + b, 0) / values.length;
+          const max = Math.max(...values);
+          const min = Math.min(...values);
+          
+          lines.push(`│ ${key.padEnd(25)} avg: ${avg.toFixed(2)}ms, min: ${min.toFixed(2)}ms, max: ${max.toFixed(2)}ms`.padEnd(75) + '│');
+        }
+      });
+      
+      lines.push('└──────────────────────────────────────────────────────────────────────────┘');
+    }
+    lines.push('');
+
+    // Sample blocked requests
+    if (wafBlocked.length > 0) {
+      lines.push('┌─ Sample WAF Blocked Requests ───────────────────────────────────────────┐');
+      wafBlocked.slice(0, 5).forEach(log => {
+        lines.push(`│ ${log.method} ${log.url.slice(0, 50)} -> Rule: ${log.wafRule || 'unknown'}`.padEnd(75) + '│');
+      });
+      lines.push('└──────────────────────────────────────────────────────────────────────────┘');
+    }
+    lines.push('');
+
+    // Sample allowed requests that might have been expected to be blocked
+    if (wafAllowed.length > 0) {
+      lines.push('┌─ Sample WAF Allowed Requests ───────────────────────────────────────────┐');
+      wafAllowed.slice(0, 10).forEach(log => {
+        lines.push(`│ ${log.method} ${log.url.slice(0, 60)} -> ${log.statusCode}`.padEnd(75) + '│');
+      });
+      lines.push('└──────────────────────────────────────────────────────────────────────────┘');
+    }
+
+    lines.push('');
+    lines.push('═'.repeat(80));
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Generate latency debug report
+   */
+  generateLatencyDebugReport(): string {
+    const lines: string[] = [
+      '═'.repeat(80),
+      'LATENCY DEBUG ANALYSIS REPORT',
+      '═'.repeat(80),
+      '',
+    ];
+
+    const timingLogs = this.debugLogs.filter(l => l.serverTiming);
+    
+    if (timingLogs.length === 0) {
+      lines.push('No server timing data available.');
+      lines.push('Enable debug mode (-d/--debug) to collect latency data.');
+      return lines.join('\n');
+    }
+
+    lines.push(`Requests with timing data: ${timingLogs.length}`);
+    lines.push('');
+
+    // Aggregate timing by operation
+    const timingKeys = new Set<string>();
+    timingLogs.forEach(l => Object.keys(l.serverTiming!).forEach(k => timingKeys.add(k)));
+
+    const timingStats: Record<string, { values: number[]; avg: number; min: number; max: number; p50: number; p95: number; p99: number }> = {};
+
+    timingKeys.forEach(key => {
+      const values = timingLogs
+        .map(l => l.serverTiming![key])
+        .filter(v => v !== undefined)
+        .sort((a, b) => a - b);
+      
+      if (values.length > 0) {
+        const percentile = (p: number) => values[Math.floor(values.length * p / 100)] || values[values.length - 1];
+        
+        timingStats[key] = {
+          values,
+          avg: values.reduce((a, b) => a + b, 0) / values.length,
+          min: values[0],
+          max: values[values.length - 1],
+          p50: percentile(50),
+          p95: percentile(95),
+          p99: percentile(99),
+        };
+      }
+    });
+
+    lines.push('┌─ Timing Statistics ──────────────────────────────────────────────────────┐');
+    lines.push('│ Operation'.padEnd(25) + 'Avg (ms)'.padStart(12) + 'P50'.padStart(10) + 'P95'.padStart(10) + 'P99'.padStart(10) + 'Max'.padStart(10) + ' │');
+    lines.push('├' + '─'.repeat(76) + '┤');
+    
+    Object.entries(timingStats)
+      .sort((a, b) => b[1].avg - a[1].avg)
+      .forEach(([key, stats]) => {
+        lines.push(
+          '│ ' + 
+          key.padEnd(23) + 
+          stats.avg.toFixed(2).padStart(12) + 
+          stats.p50.toFixed(2).padStart(10) + 
+          stats.p95.toFixed(2).padStart(10) + 
+          stats.p99.toFixed(2).padStart(10) + 
+          stats.max.toFixed(2).padStart(10) + 
+          ' │'
+        );
+      });
+    
+    lines.push('└──────────────────────────────────────────────────────────────────────────┘');
+    lines.push('');
+
+    // Identify slow operations
+    const slowThreshold = 100; // ms
+    const slowOps = Object.entries(timingStats).filter(([_, stats]) => stats.p95 > slowThreshold);
+    
+    if (slowOps.length > 0) {
+      lines.push('┌─ ⚠️ Slow Operations (P95 > 100ms) ────────────────────────────────────────┐');
+      slowOps.forEach(([key, stats]) => {
+        lines.push(`│ ${key}: P95=${stats.p95.toFixed(2)}ms, Max=${stats.max.toFixed(2)}ms`.padEnd(75) + '│');
+      });
+      lines.push('└──────────────────────────────────────────────────────────────────────────┘');
+    }
+    lines.push('');
+
+    // Timing breakdown by status code
+    const byStatus = new Map<number, number[]>();
+    timingLogs.forEach(log => {
+      if (!byStatus.has(log.statusCode)) {
+        byStatus.set(log.statusCode, []);
+      }
+      const total = Object.values(log.serverTiming!).reduce((a, b) => a + b, 0);
+      byStatus.get(log.statusCode)!.push(total);
+    });
+
+    lines.push('┌─ Timing by Status Code ──────────────────────────────────────────────────┐');
+    Array.from(byStatus.entries())
+      .sort((a, b) => a[0] - b[0])
+      .forEach(([status, values]) => {
+        const avg = values.reduce((a, b) => a + b, 0) / values.length;
+        const max = Math.max(...values);
+        lines.push(`│ ${status.toString().padEnd(5)} ${values.length.toString().padStart(6)} reqs, avg: ${avg.toFixed(2)}ms, max: ${max.toFixed(2)}ms`.padEnd(75) + '│');
+      });
+    lines.push('└──────────────────────────────────────────────────────────────────────────┘');
+
+    lines.push('');
+    lines.push('═'.repeat(80));
+
+    return lines.join('\n');
   }
 
   /**
@@ -372,6 +687,14 @@ export class LoadTester {
       report.errors.slice(0, 5).forEach((e) => {
         console.log(`  ${e.error}: ${e.count} (${e.percentage.toFixed(1)}%)`);
       });
+    }
+
+    // If debug mode was enabled, show debug reports
+    if (this.config.debug && this.debugLogs.length > 0) {
+      console.log("\n");
+      console.log(this.generateWAFDebugReport());
+      console.log("\n");
+      console.log(this.generateLatencyDebugReport());
     }
 
     console.log("\n" + "=".repeat(80) + "\n");

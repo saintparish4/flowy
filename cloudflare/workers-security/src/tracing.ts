@@ -6,6 +6,7 @@ export interface PerformanceMetrics {
   endTime?: number;
   duration?: number;
   rateLimitCheckTime?: number;
+  burstCheckTime?: number;
   turnstileCheckTime?: number;
   wafCheckTime?: number;
   handlerTime?: number;
@@ -24,6 +25,7 @@ export interface ExperimentContext {
 
 // Enhanced trace info with performance and experiment data
 export interface EnhancedTraceInfo extends TraceInfo {
+  requestTimestamp: number; // Request arrival time (captured at entry point)
   performance: PerformanceMetrics;
   experiment?: ExperimentContext;
 }
@@ -55,6 +57,7 @@ export function createTraceInfo(request: Request): EnhancedTraceInfo {
   const trace: EnhancedTraceInfo = {
     traceId: generateTraceId(),
     timestamp: Date.now(),
+    requestTimestamp: 0, // Will be set at entry point in index.ts
     method: request.method,
     url: url.pathname + url.search,
     ip:

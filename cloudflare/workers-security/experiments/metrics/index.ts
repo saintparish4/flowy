@@ -26,6 +26,7 @@ export interface RequestMetric {
   // Security check timings
   securityTiming?: {
     rateLimit?: number;
+    burst?: number;
     turnstile?: number;
     waf?: number;
   };
@@ -64,6 +65,7 @@ export interface MetricsSnapshot {
   // Security check timing stats
   securityLatency?: {
     rateLimit?: LatencyStats;
+    burst?: LatencyStats;
     turnstile?: LatencyStats;
     waf?: LatencyStats;
   };
@@ -228,6 +230,9 @@ export class MetricsCollector {
     const rateLimitTimings = windowMetrics
       .map((m) => m.securityTiming?.rateLimit)
       .filter((t) => t !== undefined) as number[];
+    const burstTimings = windowMetrics
+      .map((m) => m.securityTiming?.burst)
+      .filter((t) => t !== undefined) as number[];
     const turnstileTimings = windowMetrics
       .map((m) => m.securityTiming?.turnstile)
       .filter((t) => t !== undefined) as number[];
@@ -260,6 +265,7 @@ export class MetricsCollector {
       },
       securityLatency: {
         rateLimit: this.calculateLatencyStats(rateLimitTimings),
+        burst: this.calculateLatencyStats(burstTimings),
         turnstile: this.calculateLatencyStats(turnstileTimings),
         waf: this.calculateLatencyStats(wafTimings),
       },

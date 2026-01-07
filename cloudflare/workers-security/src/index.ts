@@ -5,6 +5,8 @@ import {
   createSuccessResponse,
   logTrace,
   addTraceHeaders,
+  finalizePerformance,
+  type EnhancedTraceInfo,
 } from "./tracing";
 import {
   createRateLimiter,
@@ -22,7 +24,20 @@ import {
   TurnstileVerifier,
   requireTurnstile,
 } from "./turnstile";
-import { checkWAF, createWAFBlockResponse, getWAFRules } from "./waf";
+import { 
+  checkWAF, 
+  createWAFBlockResponse, 
+  getWAFRules, 
+  setWAFDebugMode, 
+  generateWAFAnalysisReport,
+  analyzeRequest 
+} from "./waf";
+import { 
+  getDebugLogger, 
+  LatencyDebug,
+  type DebugLogger,
+  type DebugConfig,
+} from "./debug";
 
 // Cloudflare Workers types
 type ExecutionContext = {
@@ -40,20 +55,64 @@ interface RequestWithCf extends Request {
   cf?: CfProperties;
 }
 
-// CORS headers for development
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, CF-Turnstile-Token",
-};
+// Get CORS headers based on environment
+function getCorsHeaders(env: Env, origin?: string | null): Record<string, string> {
+  const isDevelopment = env.ENVIRONMENT === "development";
+
+  // In development, allow all origins. In production, be more restrictive.
+  const allowOrigin = isDevelopment
+    ? "*"
+    : (origin && isAllowedOrigin(origin) ? origin : "null");
+
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, CF-Turnstile-Token, X-Debug-Mode, X-Experiment-ID",
+    "Access-Control-Max-Age": "86400", // 24 hours
+  };
+}
+
+// Check if origin is allowed (customize this list for your needs)
+function isAllowedOrigin(origin: string): boolean {
+  const allowedOrigins = [
+    "http://localhost:8787",
+    "http://localhost:3000",
+    "https://your-domain.com", // Replace with your actual domain
+  ];
+  return allowedOrigins.includes(origin);
+}
+
+// Debug mode can be enabled via environment or header
+function isDebugEnabled(request: Request, env: Env): boolean {
+  return (
+    env.DEBUG_MODE === "true" || 
+    request.headers.get("X-Debug-Mode") === "true" ||
+    request.headers.get("X-Test-Traffic") === "true"
+  );
+}
+
+// Get debug configuration from environment
+function getDebugConfig(env: Env): Partial<DebugConfig> {
+  const validLevels = ['off', 'error', 'warn', 'info', 'debug', 'trace'];
+  const level = env.DEBUG_LEVEL && validLevels.includes(env.DEBUG_LEVEL)
+    ? env.DEBUG_LEVEL
+    : 'debug';
+
+  return {
+    enabled: env.DEBUG_MODE === "true",
+    level: level as 'off' | 'error' | 'warn' | 'info' | 'debug' | 'trace',
+    outputToConsole: env.DEBUG_CONSOLE !== "false",
+  };
+}
 
 /**
  * Handle OPTIONS preflight requests
  */
-function handleOptions(): Response {
+function handleOptions(request: Request, env: Env): Response {
+  const origin = request.headers.get("Origin");
   return new Response(null, {
     status: 204,
-    headers: CORS_HEADERS,
+    headers: getCorsHeaders(env, origin),
   });
 }
 
@@ -68,51 +127,164 @@ export default {
   ): Promise<Response> {
     // Handle CORS preflight
     if (request.method === "OPTIONS") {
-      return handleOptions();
+      return handleOptions(request, env);
     }
 
     // Create trace for this request
     const trace = createTraceInfo(request);
-    logTrace(trace, { environment: env.ENVIRONMENT });
+    const traceId = trace.traceId;
+
+    // Capture request timestamp at entry point (before any processing)
+    // This ensures burst detection uses actual arrival time, not processing time
+    const requestTimestamp = Date.now();
+    trace.requestTimestamp = requestTimestamp;
+
+    // Initialize debug logger
+    const debugEnabled = isDebugEnabled(request, env);
+    const logger = getDebugLogger(getDebugConfig(env));
+    
+    // Enable/disable WAF debug mode based on request
+    setWAFDebugMode(debugEnabled);
+
+    // Start request timing
+    if (debugEnabled) {
+      LatencyDebug.requestStart(logger, traceId, trace.url, trace.method);
+    }
+
+    logTrace(trace, { environment: env.ENVIRONMENT, debugEnabled });
 
     try {
       const url = new URL(request.url);
 
-      // WAF check - block malicious requests early
-      const wafResult = await checkWAF(request);
+      // ====================================================================
+      // SECURITY LAYER 1: WAF CHECK
+      // ====================================================================
+      if (debugEnabled) {
+        LatencyDebug.securityCheckStart(logger, 'waf', traceId);
+        logger.info('security', '▶ Starting WAF check', {
+          url: url.pathname + url.search,
+        }, traceId);
+      }
+
+      const wafResult = checkWAF(request, traceId);
+      
+      if (debugEnabled) {
+        const wafDuration = LatencyDebug.securityCheckEnd(logger, 'waf', traceId, wafResult);
+        trace.performance.wafCheckTime = wafDuration;
+        
+        logger.info('security', `◀ WAF check complete`, {
+          blocked: wafResult.blocked,
+          rule: wafResult.rule?.id,
+          reason: wafResult.reason,
+          rulesEvaluated: wafResult.timing?.rulesEvaluated,
+          duration: `${wafDuration.toFixed(3)}ms`,
+        }, traceId);
+      }
+
       if (wafResult.blocked) {
         const response = createWAFBlockResponse(wafResult);
         logTrace(trace, { waf: "blocked", rule: wafResult.rule?.id });
+        
+        if (debugEnabled) {
+          LatencyDebug.requestEnd(logger, traceId, 403);
+          LatencyDebug.breakdown(logger, traceId);
+        }
+        
+        finalizePerformance(trace);
         return addTraceHeaders(response, trace);
       }
 
-      // Route handling
+      // ====================================================================
+      // ROUTING
+      // ====================================================================
+      if (debugEnabled) {
+        LatencyDebug.handlerStart(logger, url.pathname, traceId);
+      }
+
+      let response: Response;
+
       switch (url.pathname) {
         case "/":
-          return handleRoot(request, env, trace);
+          response = await handleRoot(request, env, trace, logger, debugEnabled, requestTimestamp);
+          break;
 
         case "/api/public":
-          return handlePublicAPI(request, env, trace);
+          response = await handlePublicAPI(request, env, trace, logger, debugEnabled, requestTimestamp);
+          break;
 
         case "/api/protected":
-          return handleProtectedAPI(request, env, trace);
+          response = await handleProtectedAPI(request, env, trace, logger, debugEnabled, requestTimestamp);
+          break;
 
         case "/api/login":
-          return handleLogin(request, env, trace);
+          response = await handleLogin(request, env, trace, logger, debugEnabled, requestTimestamp);
+          break;
 
         case "/api/status":
-          return handleStatus(request, env, trace);
+          response = await handleStatus(request, env, trace, logger, debugEnabled, requestTimestamp);
+          break;
 
         case "/api/rules":
-          return handleRules(request, env, trace);
+          response = await handleRules(request, env, trace, logger, debugEnabled, requestTimestamp);
+          break;
+
+        case "/api/debug/waf":
+          response = await handleWAFDebug(request, env, trace, logger);
+          break;
+
+        case "/api/debug/timing":
+          response = await handleTimingDebug(request, env, trace, logger);
+          break;
 
         default:
-          return createErrorResponse("Not Found", 404, trace);
+          response = createErrorResponse("Not Found", 404, trace);
       }
+
+      if (debugEnabled) {
+        const handlerDuration = LatencyDebug.handlerEnd(logger, url.pathname, traceId, response.status);
+        trace.performance.handlerTime = handlerDuration;
+      }
+
+      // Finalize timing and add debug info to response
+      finalizePerformance(trace);
+      
+      if (debugEnabled) {
+        LatencyDebug.requestEnd(logger, traceId, response.status);
+        LatencyDebug.breakdown(logger, traceId);
+        
+        // Add debug timing headers
+        const timingCheckpoints = logger.getTimingCheckpoints(traceId);
+        const serverTimings = timingCheckpoints
+          .map(cp => `${cp.name};dur=${cp.elapsed.toFixed(1)}`)
+          .join(', ');
+        
+        const headers = new Headers(response.headers);
+        if (serverTimings) {
+          headers.set('Server-Timing', serverTimings);
+        }
+        headers.set('X-Debug-Entries', logger.getEntriesForTrace(traceId).length.toString());
+        
+        response = new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      }
+
+      return addTraceHeaders(response, trace);
     } catch (error) {
       console.error("Worker error:", error);
       logTrace(trace, { error: String(error) });
 
+      if (debugEnabled) {
+        logger.error('request', 'Worker error occurred', {
+          error: String(error),
+          stack: (error as Error).stack,
+        }, traceId);
+        LatencyDebug.requestEnd(logger, traceId, 500);
+      }
+
+      finalizePerformance(trace);
       return createErrorResponse("Internal Server Error", 500, trace, {
         error: String(error),
       });
@@ -126,7 +298,10 @@ export default {
 async function handleRoot(
   request: Request,
   env: Env,
-  trace: any
+  trace: EnhancedTraceInfo,
+  logger: DebugLogger,
+  debugEnabled: boolean,
+  requestTimestamp: number
 ): Promise<Response> {
   const docs = {
     name: "Cloudflare Workers Security Example",
@@ -138,6 +313,8 @@ async function handleRoot(
       "/api/login": "Login endpoint with strict rate limiting",
       "/api/status": "Service status and configuration info",
       "/api/rules": "List active WAF rules",
+      "/api/debug/waf": "WAF debug analysis (POST with URL to analyze)",
+      "/api/debug/timing": "Request timing debug info",
     },
     features: [
       "Request tracing with unique trace IDs",
@@ -146,15 +323,20 @@ async function handleRoot(
       "Turnstile bot protection",
       "WAF rule simulation",
       "Mock implementations for local development",
+      "Comprehensive debug logging",
     ],
     security: {
       turnstileEnabled: env.TURNSTILE_ENABLED === "true",
       wafEnabled: true,
       rateLimitingEnabled: true,
     },
+    debug: {
+      enabled: debugEnabled,
+      hint: "Add X-Debug-Mode: true header to enable debug logging",
+    },
   };
 
-  return createSuccessResponse(docs, trace, CORS_HEADERS);
+  return createSuccessResponse(docs, trace, getCorsHeaders(env, request.headers.get("Origin")));
 }
 
 /**
@@ -163,8 +345,13 @@ async function handleRoot(
 async function handlePublicAPI(
   request: Request,
   env: Env,
-  trace: any
+  trace: EnhancedTraceInfo,
+  logger: DebugLogger,
+  debugEnabled: boolean,
+  requestTimestamp: number
 ): Promise<Response> {
+  const traceId = trace.traceId;
+  
   const rateLimiter = createRateLimiter(env);
   const burstDetector = createBurstDetector(env);
   const key = getRateLimitKey(request, "public");
@@ -174,11 +361,29 @@ async function handlePublicAPI(
   const rateLimitProfile = getRateLimitProfile(url.pathname);
   const burstConfig: BurstConfig = BURST_PROFILES.RELAXED;
 
-  // Check burst detection first (more aggressive)
-  const burstResult = await burstDetector.check(key, burstConfig);
+  // ====================================================================
+  // SECURITY LAYER 2: BURST DETECTION
+  // ====================================================================
+  if (debugEnabled) {
+    LatencyDebug.securityCheckStart(logger, 'burst', traceId);
+  }
+
+  const burstResult = await burstDetector.check(key, burstConfig, requestTimestamp);
+
+  if (debugEnabled) {
+    const burstDuration = LatencyDebug.securityCheckEnd(logger, 'burst', traceId, burstResult);
+    trace.performance.burstCheckTime = burstDuration;
+    logger.debug('security', 'Burst detection result', {
+      isBurst: burstResult.isBurst,
+      severity: burstResult.severity,
+      recommendation: burstResult.recommendation,
+      shortWindowCount: burstResult.shortWindowCount,
+      shortWindowLimit: burstResult.shortWindowLimit,
+      duration: `${burstDuration.toFixed(3)}ms`,
+    }, traceId);
+  }
   
   if (burstResult.isBurst) {
-    // Handle burst based on severity
     if (burstResult.recommendation === 'block' || burstResult.severity === 'critical') {
       logTrace(trace, { 
         burst: "blocked", 
@@ -195,8 +400,10 @@ async function handlePublicAPI(
         },
       });
     } else if (burstResult.recommendation === 'queue') {
-      // Queue the request to throttle it
       try {
+        if (debugEnabled) {
+          logger.debug('security', 'Request queued for throttling', { key }, traceId);
+        }
         await burstDetector.queue(key, 5000);
       } catch (error: any) {
         if (error.message === 'Request queue timeout') {
@@ -204,14 +411,48 @@ async function handlePublicAPI(
           return createErrorResponse("Request queued timeout", 429, trace);
         }
       }
+    } else if (burstResult.recommendation === 'throttle') {
+      // For low/medium-severity bursts, allow through but add small delay to smooth traffic
+      // This reduces false positives for legitimate traffic bursts and wave patterns
+      if (debugEnabled) {
+        logger.debug('security', 'Request throttled (burst smoothing)', {
+          severity: burstResult.severity,
+          shortWindowCount: burstResult.shortWindowCount,
+          shortWindowLimit: burstResult.shortWindowLimit,
+        }, traceId);
+      }
+      // Add minimal delay (2-5ms) to smooth out the burst without significant impact
+      // Further reduced to minimize latency impact on legitimate traffic
+      const throttleDelay = burstResult.severity === 'medium' ? 5 : 2;
+      await new Promise(resolve => setTimeout(resolve, throttleDelay));
+      logTrace(trace, { burst: "throttled", severity: burstResult.severity });
     }
-    // For 'throttle' or 'allow', continue to rate limit check
+    // 'allow' recommendation means continue normally
+  }
+
+  // ====================================================================
+  // SECURITY LAYER 3: RATE LIMITING
+  // ====================================================================
+  if (debugEnabled) {
+    LatencyDebug.securityCheckStart(logger, 'rate-limit', traceId);
   }
 
   const rateLimit = await rateLimiter.check({
     key,
     ...rateLimitProfile,
   });
+
+  if (debugEnabled) {
+    const rlDuration = LatencyDebug.securityCheckEnd(logger, 'rate-limit', traceId, rateLimit);
+    trace.performance.rateLimitCheckTime = rlDuration;
+    logger.debug('security', 'Rate limit check result', {
+      allowed: rateLimit.allowed,
+      limit: rateLimit.limit,
+      remaining: rateLimit.remaining,
+      resetAt: new Date(rateLimit.resetAt).toISOString(),
+      duration: `${rlDuration.toFixed(3)}ms`,
+    }, traceId);
+  }
 
   if (!rateLimit.allowed) {
     logTrace(trace, { rateLimit: "exceeded", profile: "relaxed" });
@@ -231,7 +472,7 @@ async function handlePublicAPI(
     yourIP: trace.ip,
   };
 
-  const response = createSuccessResponse(data, trace, CORS_HEADERS);
+  const response = createSuccessResponse(data, trace, getCorsHeaders(env, request.headers.get("Origin")));
 
   // Add rate limit headers
   const headers = new Headers(response.headers);
@@ -251,10 +492,31 @@ async function handlePublicAPI(
 async function handleProtectedAPI(
   request: Request,
   env: Env,
-  trace: any
+  trace: EnhancedTraceInfo,
+  logger: DebugLogger,
+  debugEnabled: boolean,
+  requestTimestamp: number
 ): Promise<Response> {
-  // Check Turnstile first
+  const traceId = trace.traceId;
+
+  // ====================================================================
+  // SECURITY LAYER 2: TURNSTILE VERIFICATION
+  // ====================================================================
+  if (debugEnabled) {
+    LatencyDebug.securityCheckStart(logger, 'turnstile', traceId);
+  }
+
   const turnstileResult = await requireTurnstile(request, env);
+
+  if (debugEnabled) {
+    const tsDuration = LatencyDebug.securityCheckEnd(logger, 'turnstile', traceId, turnstileResult);
+    trace.performance.turnstileCheckTime = tsDuration;
+    logger.debug('security', 'Turnstile verification result', {
+      success: turnstileResult.success,
+      error: turnstileResult.error,
+      duration: `${tsDuration.toFixed(3)}ms`,
+    }, traceId);
+  }
 
   if (!turnstileResult.success) {
     logTrace(trace, { turnstile: "failed" });
@@ -272,19 +534,24 @@ async function handleProtectedAPI(
   const key = getRateLimitKey(request, "protected");
   const url = new URL(request.url);
   
-  // Get rate limit profile and burst detection for this endpoint
   const rateLimitProfile = getRateLimitProfile(url.pathname);
   const burstConfig: BurstConfig = BURST_PROFILES.NORMAL;
 
-  // Check burst detection first
-  const burstResult = await burstDetector.check(key, burstConfig);
+  // Burst detection
+  if (debugEnabled) {
+    LatencyDebug.securityCheckStart(logger, 'burst', traceId);
+  }
+
+  const burstResult = await burstDetector.check(key, burstConfig, requestTimestamp);
+
+  if (debugEnabled) {
+    const burstDuration = LatencyDebug.securityCheckEnd(logger, 'burst', traceId, burstResult);
+    trace.performance.burstCheckTime = burstDuration;
+  }
   
   if (burstResult.isBurst) {
     if (burstResult.recommendation === 'block' || burstResult.severity === 'critical') {
-      logTrace(trace, { 
-        burst: "blocked", 
-        severity: burstResult.severity,
-      });
+      logTrace(trace, { burst: "blocked", severity: burstResult.severity });
       return createErrorResponse("Rate limit exceeded (burst detected)", 429, trace, {
         burst: {
           severity: burstResult.severity,
@@ -302,10 +569,20 @@ async function handleProtectedAPI(
     }
   }
 
+  // Rate limiting
+  if (debugEnabled) {
+    LatencyDebug.securityCheckStart(logger, 'rate-limit', traceId);
+  }
+
   const rateLimit = await rateLimiter.check({
     key,
     ...rateLimitProfile,
   });
+
+  if (debugEnabled) {
+    const rlDuration = LatencyDebug.securityCheckEnd(logger, 'rate-limit', traceId, rateLimit);
+    trace.performance.rateLimitCheckTime = rlDuration;
+  }
 
   if (!rateLimit.allowed) {
     logTrace(trace, { rateLimit: "exceeded", profile: "normal" });
@@ -320,7 +597,7 @@ async function handleProtectedAPI(
     turnstileValidated: true,
   };
 
-  return createSuccessResponse(data, trace, CORS_HEADERS);
+  return createSuccessResponse(data, trace, getCorsHeaders(env, request.headers.get("Origin")));
 }
 
 /**
@@ -329,27 +606,47 @@ async function handleProtectedAPI(
 async function handleLogin(
   request: Request,
   env: Env,
-  trace: any
+  trace: EnhancedTraceInfo,
+  logger: DebugLogger,
+  debugEnabled: boolean,
+  requestTimestamp: number
 ): Promise<Response> {
+  const traceId = trace.traceId;
+
   if (request.method !== "POST") {
     return createErrorResponse("Method not allowed", 405, trace);
   }
 
-  // Strict rate limiting for login attempts
   const rateLimiter = createRateLimiter(env);
   const burstDetector = createBurstDetector(env);
   const key = getRateLimitKey(request, "login");
   const url = new URL(request.url);
   
-  // Get rate limit profile and burst detection for this endpoint
   const rateLimitProfile = getRateLimitProfile(url.pathname);
   const burstConfig: BurstConfig = BURST_PROFILES.STRICT;
 
-  // Check burst detection first (very strict for login)
-  const burstResult = await burstDetector.check(key, burstConfig);
+  // ====================================================================
+  // SECURITY LAYER 2: BURST DETECTION (STRICT)
+  // ====================================================================
+  if (debugEnabled) {
+    LatencyDebug.securityCheckStart(logger, 'burst', traceId);
+    logger.info('security', 'Login endpoint - applying STRICT burst detection', undefined, traceId);
+  }
+
+  const burstResult = await burstDetector.check(key, burstConfig, requestTimestamp);
+
+  if (debugEnabled) {
+    const burstDuration = LatencyDebug.securityCheckEnd(logger, 'burst', traceId, burstResult);
+    trace.performance.burstCheckTime = burstDuration;
+    logger.debug('security', 'Burst detection result (STRICT)', {
+      isBurst: burstResult.isBurst,
+      severity: burstResult.severity,
+      recommendation: burstResult.recommendation,
+      duration: `${burstDuration.toFixed(3)}ms`,
+    }, traceId);
+  }
   
   if (burstResult.isBurst) {
-    // For login, be very aggressive - block or throttle most bursts
     if (burstResult.recommendation === 'block' || 
         burstResult.severity === 'critical' || 
         burstResult.severity === 'high') {
@@ -372,7 +669,7 @@ async function handleLogin(
       );
     } else if (burstResult.recommendation === 'queue' || burstResult.recommendation === 'throttle') {
       try {
-        await burstDetector.queue(key, 3000); // Shorter timeout for login
+        await burstDetector.queue(key, 3000);
       } catch (error: any) {
         if (error.message === 'Request queue timeout') {
           return createErrorResponse(
@@ -385,10 +682,28 @@ async function handleLogin(
     }
   }
 
+  // ====================================================================
+  // SECURITY LAYER 3: RATE LIMITING (STRICT)
+  // ====================================================================
+  if (debugEnabled) {
+    LatencyDebug.securityCheckStart(logger, 'rate-limit', traceId);
+  }
+
   const rateLimit = await rateLimiter.check({
     key,
     ...rateLimitProfile,
   });
+
+  if (debugEnabled) {
+    const rlDuration = LatencyDebug.securityCheckEnd(logger, 'rate-limit', traceId, rateLimit);
+    trace.performance.rateLimitCheckTime = rlDuration;
+    logger.debug('security', 'Rate limit check result (STRICT)', {
+      allowed: rateLimit.allowed,
+      limit: rateLimit.limit,
+      remaining: rateLimit.remaining,
+      duration: `${rlDuration.toFixed(3)}ms`,
+    }, traceId);
+  }
 
   if (!rateLimit.allowed) {
     logTrace(trace, {
@@ -404,14 +719,13 @@ async function handleLogin(
     );
   }
 
-  // In a real app, you'd validate credentials here
   const data = {
     message: "Login endpoint (demo)",
     note: "This is a demonstration. Real authentication would validate credentials.",
     attemptsRemaining: rateLimit.remaining,
   };
 
-  return createSuccessResponse(data, trace, CORS_HEADERS);
+  return createSuccessResponse(data, trace, getCorsHeaders(env, request.headers.get("Origin")));
 }
 
 /**
@@ -420,7 +734,10 @@ async function handleLogin(
 async function handleStatus(
   request: Request,
   env: Env,
-  trace: any
+  trace: EnhancedTraceInfo,
+  logger: DebugLogger,
+  debugEnabled: boolean,
+  requestTimestamp: number
 ): Promise<Response> {
   const status = {
     service: "workers-security-example",
@@ -442,9 +759,14 @@ async function handleStatus(
       waf: {
         enabled: true,
         rulesCount: getWAFRules().length,
+        debugEnabled: debugEnabled,
       },
       tracing: {
         enabled: true,
+      },
+      debug: {
+        enabled: debugEnabled,
+        level: logger.getConfig().level,
       },
     },
     cloudflare: {
@@ -454,7 +776,7 @@ async function handleStatus(
     },
   };
 
-  return createSuccessResponse(status, trace, CORS_HEADERS);
+  return createSuccessResponse(status, trace, getCorsHeaders(env, request.headers.get("Origin")));
 }
 
 /**
@@ -463,7 +785,10 @@ async function handleStatus(
 async function handleRules(
   request: Request,
   env: Env,
-  trace: any
+  trace: EnhancedTraceInfo,
+  logger: DebugLogger,
+  debugEnabled: boolean,
+  requestTimestamp: number
 ): Promise<Response> {
   const rules = getWAFRules();
 
@@ -473,9 +798,109 @@ async function handleRules(
       id: rule.id,
       description: rule.description,
       action: rule.action,
+      category: rule.category,
+      severity: rule.severity,
       conditionsCount: rule.conditions.length,
+      conditions: debugEnabled ? rule.conditions : undefined,
     })),
   };
 
-  return createSuccessResponse(data, trace, CORS_HEADERS);
+  return createSuccessResponse(data, trace, getCorsHeaders(env, request.headers.get("Origin")));
+}
+
+/**
+ * WAF Debug endpoint - analyze why a URL would/wouldn't be blocked
+ */
+async function handleWAFDebug(
+  request: Request,
+  env: Env,
+  trace: EnhancedTraceInfo,
+  logger: DebugLogger
+): Promise<Response> {
+  if (request.method !== "POST") {
+    return createErrorResponse("POST with JSON body required", 405, trace);
+  }
+
+  try {
+    const body = await request.json() as { url?: string; method?: string; headers?: Record<string, string> };
+    
+    if (!body.url) {
+      return createErrorResponse("Missing 'url' in request body", 400, trace);
+    }
+
+    // Create a mock request for analysis
+    const mockRequest = new Request(body.url, {
+      method: body.method || "GET",
+      headers: body.headers || {},
+    });
+
+    const analysis = analyzeRequest(mockRequest);
+    const report = generateWAFAnalysisReport(mockRequest);
+
+    return createSuccessResponse({
+      analysis: {
+        wouldBeBlocked: analysis.wouldBeBlocked,
+        matchingRulesCount: analysis.matchingRules.length,
+        matchingRules: analysis.matchingRules.map(m => ({
+          ruleId: m.rule.id,
+          action: m.rule.action,
+          category: m.rule.category,
+          severity: m.rule.severity,
+          description: m.rule.description,
+          matchedConditions: m.matchedConditions.map(c => ({
+            field: c.condition.field,
+            operator: c.condition.operator,
+            pattern: c.condition.value,
+            matchedValue: c.fieldValue,
+          })),
+        })),
+        totalRulesChecked: analysis.checkedRules.length,
+      },
+      report,
+    }, trace, getCorsHeaders(env, request.headers.get("Origin")));
+  } catch (error: any) {
+    return createErrorResponse(`Invalid request: ${error.message}`, 400, trace);
+  }
+}
+
+/**
+ * Timing Debug endpoint - get timing breakdown for the current request
+ */
+async function handleTimingDebug(
+  request: Request,
+  env: Env,
+  trace: EnhancedTraceInfo,
+  logger: DebugLogger
+): Promise<Response> {
+  const traceId = trace.traceId;
+  
+  // Simulate some work to show timing
+  const timings: Record<string, number> = {};
+  
+  // Measure WAF check
+  const wafStart = performance.now();
+  checkWAF(request, traceId);
+  timings.waf = performance.now() - wafStart;
+
+  // Get timing report
+  const checkpoints = logger.getTimingCheckpoints(traceId);
+  const report = logger.generateTimingReport(traceId);
+  const entries = logger.getEntriesForTrace(traceId);
+
+  return createSuccessResponse({
+    traceId,
+    simulated: timings,
+    checkpoints: checkpoints.map(cp => ({
+      name: cp.name,
+      elapsed: cp.elapsed,
+      total: cp.total,
+    })),
+    report,
+    debugEntries: entries.map(e => ({
+      timestamp: e.timestamp,
+      level: e.level,
+      category: e.category,
+      message: e.message,
+    })),
+  }, trace, getCorsHeaders(env, request.headers.get("Origin")));
 }

@@ -24,6 +24,8 @@ interface CLIOptions {
   realtime?: boolean;
   saveReport?: boolean;
   list?: boolean;
+  debug?: boolean;     // Enable debug mode for WAF/latency logging
+  analyzeWaf?: boolean; // Show WAF analysis
 }
 
 /**
@@ -81,6 +83,16 @@ function parseArgs(): CLIOptions {
         options.list = true;
         break;
 
+      case "--debug":
+      case "-D":
+        options.debug = true;
+        break;
+
+      case "--analyze-waf":
+      case "-w":
+        options.analyzeWaf = true;
+        break;
+
       case "--help":
       case "-h":
         printHelp();
@@ -117,11 +129,26 @@ Options:
   --realtime                Display realtime metrics
   -s, --save                Save report to file
   -l, --list                List available profiles
+  -D, --debug               Enable debug mode for detailed WAF/latency logging
+  -w, --analyze-waf         Show WAF analysis report after test
   -h, --help                Show this help message
+
+Debug Mode Options:
+  When --debug is enabled:
+  - Requests include X-Debug-Mode header to enable server-side debug logging
+  - Server-Timing headers are captured for latency analysis
+  - WAF block details are collected with rule information
+  - Debug reports are generated after the test
 
 Examples:
   # Run burst attack against local server
   npm run load-test -- -p BURST_ATTACK
+
+  # Run WAF test with debug mode enabled
+  npm run load-test -- -p WAF_COMPREHENSIVE_TEST --debug -v
+
+  # Run MIXED_TRAFFIC with WAF analysis to see why blocks don't happen
+  npm run load-test -- -p MIXED_TRAFFIC --debug --analyze-waf -v
 
   # Run credential stuffing against deployed worker
   npm run load-test -- -t https://worker.example.com -p CREDENTIAL_STUFFING
@@ -152,6 +179,15 @@ function listAvailableProfiles(): void {
     console.log(`  Duration: ${profile.duration}s`);
     console.log(`  Concurrency: ${profile.concurrency}`);
     console.log(`  Distribution: ${profile.pattern.distribution}`);
+    console.log(`  Requests: ${profile.requests.length} endpoint(s)`);
+    
+    // Show request details
+    profile.requests.forEach((req, idx) => {
+      const bodyInfo = req.body ? ` [body: ${JSON.stringify(req.body).slice(0, 50)}...]` : '';
+      const headerInfo = req.headers ? ` [headers: ${Object.keys(req.headers).join(', ')}]` : '';
+      console.log(`    ${idx + 1}. ${req.method} ${req.path}${bodyInfo}${headerInfo}`);
+    });
+    
     if (profile.expected.blockRate) {
       console.log(
         `  Expected Block Rate: ${(profile.expected.blockRate * 100).toFixed(
@@ -305,7 +341,8 @@ function formatReport(report: ExperimentReport): string {
  * Save report to file
  */
 async function saveReport(
-  report: ExperimentReport
+  report: ExperimentReport,
+  debugReport?: string
 ): Promise<void> {
   const reportsDir = path.join(process.cwd(), "reports");
 
@@ -317,7 +354,15 @@ async function saveReport(
     // Format as human-readable text with JSON appended
     const formattedText = formatReport(report);
     const jsonData = JSON.stringify(report, null, 2);
-    const content = formattedText + jsonData;
+    let content = formattedText + jsonData;
+
+    // Append debug report if available
+    if (debugReport) {
+      content += "\n\n" + "=".repeat(80) + "\n";
+      content += "DEBUG INFORMATION\n";
+      content += "=".repeat(80) + "\n\n";
+      content += debugReport;
+    }
 
     await fs.writeFile(filepath, content);
     console.log(`\n📄 Report saved to: ${filepath}\n`);
@@ -361,6 +406,7 @@ async function main(): Promise<void> {
   const tester = createLoadTest(target, profile, {
     verbose: options.verbose,
     realtime: options.realtime,
+    debug: options.debug,
   });
 
   // Handle Ctrl+C gracefully
@@ -382,8 +428,20 @@ async function main(): Promise<void> {
         profile.expected.avgLatency
       );
 
-      await saveReport(report);
+      let debugReport: string | undefined;
+      if (options.debug) {
+        debugReport = tester.generateWAFDebugReport() + "\n\n" + tester.generateLatencyDebugReport();
+      }
+
+      await saveReport(report, debugReport);
     }
+
+    // Show WAF analysis if requested
+    if (options.analyzeWaf && !options.debug) {
+      console.log("\n⚠️  WAF analysis requires --debug mode to collect data.");
+      console.log("   Run again with: --debug --analyze-waf\n");
+    }
+
   } catch (error: any) {
     console.error(`\n✗ Load test failed: ${error.message}\n`);
     process.exit(1);
