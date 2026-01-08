@@ -64,7 +64,7 @@ class SlidingWindowRateLimiter(
 
             if (atomicTimestamps.compareAndSet(currentTimestamps, newTimestamps)) {
                 // Successfully added - request is allowed 
-                Allowed 
+                Allow 
             } else {
                 // Another thread modified the timestamps - retry 
                 updateTimestamps()  
@@ -91,9 +91,9 @@ class SlidingWindowRateLimiter(
     * Clear all stored timestamps 
     * Useful for testing 
     */
-    def clear(): Unit = {
-        KeyTimestamps.clear() 
-    }
+  def clear(): Unit = {
+      keyTimestamps.clear() 
+  }
 }
 
 object SlidingWindowRateLimiter {
