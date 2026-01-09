@@ -77,49 +77,38 @@ class InMemoryIdempotencyStore extends IdempotencyStore {
 
         val now = Instant.now() 
         val expiryTime = now.plus(ttl) 
+        val newEntry = (response, expiryTime)
 
-        // Attempt to compute value if absent 
-        // This is atomic - only one thread will successfully insert 
-        val result = store.computeIfAbsent(
-            key, 
-            _ => {
-                // Key doesn't exist - store it 
-                (response, expiryTime) 
-            }
-        )
-
-        // Check what we got back 
-        val (storedResponse, storedExpiry) = result 
-
-        if (now.isBefore(storedExpiry)) {
-            // Entry exists and is valid 
-            if (storedResponse == response && storedExpiry == expiryTime) {
-                // We just stored it (same object reference) 
-                Stored 
-            } else {
-                // Someone else stored it first 
-                AlreadyExists(storedResponse)  
-            }
+        // Atomically try to insert - putIfAbsent returns null if we inserted, 
+        // or the existing value if someone else inserted first
+        val previous = store.putIfAbsent(key, newEntry)
+        
+        if (previous == null) {
+            // We successfully inserted - first writer wins
+            Stored
         } else {
-            // Entry exists but is expired
-            // Atomically replace expired entry with new one 
-            val replaced = store.replace(key, result, (response, expiryTime)) 
-
-            if (replaced) {
-                // Successfully replaced expired entry 
-                Stored 
+            // Someone else inserted first - check if it's still valid
+            val (existingResponse, existingExpiry) = previous
+            if (now.isBefore(existingExpiry)) {
+                // Valid entry exists - return it
+                AlreadyExists(existingResponse)
             } else {
-                // Someone else updated it between our check and replace 
-                // Try again by getting the current value 
-                get(key) match {
-                    case Some(existingResponse) => 
-                        // Valid entry now exists 
-                        AlreadyExists(existingResponse) 
-
-                    case None => 
-                        // Entry was removed or expired 
-                        // Recursively retry the putIfAbsent 
-                        putIfAbsent(key, response, ttl) 
+                // Previous entry was expired - try to replace it atomically
+                val replaced = store.replace(key, previous, newEntry)
+                if (replaced) {
+                    // Successfully replaced expired entry
+                    Stored
+                } else {
+                    // Someone else updated it between our putIfAbsent and replace
+                    // Get the current value and retry
+                    get(key) match {
+                        case Some(currentResponse) =>
+                            // Valid entry now exists
+                            AlreadyExists(currentResponse)
+                        case None =>
+                            // Entry was removed - retry
+                            putIfAbsent(key, response, ttl)
+                    }
                 }
             }
         }
