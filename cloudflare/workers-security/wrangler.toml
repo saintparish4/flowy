@@ -16,7 +16,18 @@ preview_id = "your-preview-kv-namespace-id"
 # database_id = "your-database-id-here" 
 
 # Environment variables 
-[vars] 
+[vars]
+# Idempotency TTL in seconds (default: 86400 = 24 hours)
+IDEMPOTENCY_TTL = "86400"
+
+# Rate Limiter type: "token-bucket" | "sliding-window" | "fixed-window" | "legacy"
+RATE_LIMITER_TYPE = "token-bucket"
+
+# Token bucket Configuration 
+TOKEN_BUCKET_CAPACITY = "100" # Maximum burst capacity 
+TOKEN_BUCKET_REFILL_RATE = "10" # Tokens per second (600/min)
+
+
 ENVIRONMENT = "development"
 TURNSTILE_ENABLED = "false" 
 
@@ -28,3 +39,10 @@ name = "workers-security-prod"
 ENVIRONMENT = "production"
 TURNSTILE_ENABLED = "true"
 # TURNSTILE_SECRET_KEY will be added via: wrangler secret put TURNSTILE_SECRET_KEY
+
+# Build configuration 
+# [build] 
+# command = "npm run build" 
+
+# [build.upload] 
+#format = "service-worker" 
