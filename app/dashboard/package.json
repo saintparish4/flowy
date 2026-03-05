@@ -1,0 +1,6 @@
+{
+  "name": "@hexa/dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Phase 8 placeholder — Vite/React SPA for the Hexa enterprise dashboard"
+}

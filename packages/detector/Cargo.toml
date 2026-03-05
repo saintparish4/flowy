@@ -1,0 +1,25 @@
+[package]
+name = "hexa-detector"
+version = "0.1.0"
+edition = "2021"
+description = "Rust/WASM threat scoring engine for Hexa — decodes EVM calldata and scores transaction risk"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2.114"
+serde = { version = "1.0.228", features = ["derive"] }
+serde-wasm-bindgen = "0.6.5"
+hex = "0.4.3"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.64"
+
+[profile.release]
+# Optimize for size — WASM binary must stay < 500KB (enforced in CI)
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

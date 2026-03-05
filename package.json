@@ -1,0 +1,19 @@
+{
+  "name": "hexa",
+  "private": true,
+  "workspaces": [
+    "packages/worker",
+    "packages/detector",
+    "apps/dashboard"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=packages/worker",
+    "build": "npm run build --workspace=packages/worker",
+    "test": "npm run test --workspace=packages/worker",
+    "lint": "npm run lint --workspace=packages/worker",
+    "typecheck": "npm run typecheck --workspace=packages/worker"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

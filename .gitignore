@@ -1,0 +1,38 @@
+# IDE & Editor files
+.cursor/
+.vscode/
+.idea/
+.DS_Store
+
+# Scala/Metals IDE files
+.bsp/
+.metals/
+.bloop/
+.scala-build/
+metals.sbt
+
+# Environment & Config
+.env
+.env.local
+.env.*.local
+.dev.vars
+
+# Build & Dependencies
+.wrangler/
+dist/
+worker/
+node_modules/
+target/
+
+# Lock files
+pnpm-lock.yaml
+pnpm-workspace.yaml
+
+# Documentation & Notes
+CLAUDE.md
+.claude/
+
+# Logs
+delta/
+
+CLAUDE.md 

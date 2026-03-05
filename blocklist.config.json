@@ -1,0 +1,7 @@
+{
+  "$schema": "./docs/blocklist.config.schema.json",
+  "_comment": "Add custom blocklist entries here. These are merged into config.ts at Worker startup. See docs/configuration.md for the full format reference.",
+  "wallets": [],
+  "domains": [],
+  "ips": []
+}
