@@ -1,0 +1,49 @@
+name = "hexa-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENVIRONMENT = "development"
+UPSTREAM_TIMEOUT_MS = "10000"
+AUTH_CACHE_TTL_SECONDS = "300"
+BLOCKLIST_IP_CACHE_TTL_SECONDS = "30"
+BLOCKLIST_WALLET_CACHE_TTL_SECONDS = "60"
+BLOCKLIST_LRU_MAX_SIZE = "10000"
+CIRCUIT_BREAKER_FAILURE_THRESHOLD = "5"
+CIRCUIT_BREAKER_OPEN_DURATION_MS = "30000"
+THREAT_SCORE_BLOCK_THRESHOLD = "80"
+
+# D1 Database — provisions all three tables via migrations
+[[d1_databases]]
+binding = "DB"
+database_name = "hexa-db"
+database_id = "local-hexa-db"
+migrations_dir = "src/db/migrations"
+
+# KV Namespaces
+[[kv_namespaces]]
+binding = "AUTH_CACHE"
+id = "local-auth-cache"
+
+[[kv_namespaces]]
+binding = "BLOCKLIST_WALLETS"
+id = "local-blocklist-wallets"
+
+[[kv_namespaces]]
+binding = "BLOCKLIST_DOMAINS"
+id = "local-blocklist-domains"
+
+# Durable Objects
+[[durable_objects.bindings]]
+name = "RATE_LIMITER"
+class_name = "RateLimiter"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["RateLimiter"]
+
+# Dev-only: local KV, D1, and DO instances are created automatically by wrangler
+[dev]
+port = 8787
+local_protocol = "http"

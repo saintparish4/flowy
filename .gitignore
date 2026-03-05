@@ -20,7 +20,6 @@ metals.sbt
 # Build & Dependencies
 .wrangler/
 dist/
-worker/
 node_modules/
 target/
 
