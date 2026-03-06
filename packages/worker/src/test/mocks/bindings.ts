@@ -9,6 +9,8 @@
  * verify fail-open / fail-closed behavior from ADR 001, not to replicate D1.
  */
 
+import type { Env } from "../../config";
+
 // ---------------------------------------------------------------------------
 // D1 mock
 // ---------------------------------------------------------------------------
@@ -299,7 +301,7 @@ export function buildMockEnv(options: MockEnvOptions = {}): {
   blocklistWallets: MockKVNamespace;
   blocklistDomains: MockKVNamespace;
   rateLimiter: MockDurableObjectNamespace;
-  env: Record<string, unknown>;
+  env: Env;
 } {
   const db = new MockD1Database();
   const authCache = new MockKVNamespace();
@@ -307,7 +309,7 @@ export function buildMockEnv(options: MockEnvOptions = {}): {
   const blocklistDomains = new MockKVNamespace();
   const rateLimiter = new MockDurableObjectNamespace();
 
-  const env: Record<string, unknown> = {
+  const env = {
     DB: db,
     AUTH_CACHE: authCache,
     BLOCKLIST_WALLETS: blocklistWallets,
@@ -325,7 +327,7 @@ export function buildMockEnv(options: MockEnvOptions = {}): {
     CIRCUIT_BREAKER_OPEN_DURATION_MS: "30000",
     THREAT_SCORE_BLOCK_THRESHOLD: "80",
     ...options.vars,
-  };
+  } as unknown as Env;
 
   return { db, authCache, blocklistWallets, blocklistDomains, rateLimiter, env };
 }

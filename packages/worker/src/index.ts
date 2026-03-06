@@ -1,11 +1,15 @@
 import { Hono } from "hono";
 import { type Env, parseConfig } from "./config";
+import { authMiddleware } from "./middleware/auth";
+import type { AuthContext } from "./middleware/auth-types";
 
 // RateLimiter Durable Object stub — full implementation in Phase 4.
 // Exported here so wrangler can locate the class for DO binding registration.
 export { RateLimiter } from "./durable-objects/rate-limiter";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: AuthContext  }>(); 
+
+app.use("*", authMiddleware());  
 
 // ---------------------------------------------------------------------------
 // Health check — must return 200 before Phase 2 begins

@@ -9,11 +9,12 @@
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "hono": "^4.6.0",
+    "jose": "^6.2.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
